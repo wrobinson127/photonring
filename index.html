@@ -1,0 +1,1326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photon Ring</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%23ffb469' stroke-width='2.5'/%3E%3Cpath d='M3 18c8 4 18 4 26 0' fill='none' stroke='%23ffb469' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta name="description" content="A spinning black hole traced live in your browser, among real stars and Hubble nebulae. Every pixel follows a light path through curved spacetime.">
+<meta property="og:title" content="Photon Ring">
+<meta property="og:description" content="A spinning black hole traced live in your browser, among real stars and Hubble nebulae.">
+<meta property="og:image" content="https://photonring.walker-robinson.com/og.png">
+<meta property="og:url" content="https://photonring.walker-robinson.com/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root{
+    --ink:#f4ecdd; --dim:rgba(244,236,221,.62); --faint:rgba(244,236,221,.34);
+    --line:rgba(244,236,221,.16); --amber:#ffb469; --panel:rgba(10,9,8,.72);
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+    --mono:ui-monospace,"Cascadia Mono","SF Mono",Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#000;color:var(--ink);overflow:hidden}
+  body{font-family:var(--serif);-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
+  #panel{user-select:text;-webkit-user-select:text}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #gl{cursor:grab;touch-action:none}
+  #gl.drag{cursor:grabbing}
+  #gl.aim{cursor:crosshair}
+  #guide{pointer-events:none}
+  #scrim{position:fixed;inset:0;z-index:2;pointer-events:none;background:
+    radial-gradient(ellipse 360px 160px at 0 0,rgba(0,0,0,.7),transparent 72%),
+    radial-gradient(ellipse 760px 200px at 100% 100%,rgba(0,0,0,.6),transparent 70%)}
+  .ui{position:fixed;z-index:3;transition:opacity 1.2s ease}
+  #title,#hud,#hint{text-shadow:0 0 14px rgba(0,0,0,.9),0 1px 3px rgba(0,0,0,.9)}
+  #title{left:40px;top:34px;max-width:360px}
+  #title h1{margin:0;font-weight:400;font-size:30px;letter-spacing:.01em;line-height:1}
+  #hud{display:none;left:28px;bottom:26px;padding:10px 14px;border-radius:12px;background:rgba(0,0,0,.7);
+       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(244,236,221,.08);font-family:var(--mono);font-size:11.5px;line-height:1.9;color:var(--dim);
+       letter-spacing:.03em;font-variant-numeric:tabular-nums}
+  body.readout #hud{display:block}
+  body.readout #hint,body.readout #note{left:calc(50% + 72px)}
+  #hud b{font-weight:400;color:var(--ink)}
+  #hud .k{display:inline-block;width:11em;color:var(--faint)}
+  #controls{right:40px;bottom:34px;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+  #drawer{display:flex;flex-direction:column;align-items:flex-end;gap:8px;
+          transition:opacity .25s ease,transform .25s ease,visibility 0s}
+  #controls:not(.open) #drawer{opacity:0;transform:translateY(10px);visibility:hidden;pointer-events:none;
+          transition:opacity .2s ease,transform .2s ease,visibility 0s .2s}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+       margin-right:4px;text-shadow:0 0 10px #000,0 1px 2px #000}
+  .btn.sm{padding:8px 12px}
+  #spin{width:150px;accent-color:var(--amber);cursor:pointer}
+  #spinV{min-width:2.6em;text-align:right;color:var(--ink)}
+  #bC .chev{display:inline-block;width:7px;height:7px;margin-left:10px;border-right:1.5px solid currentColor;
+       border-top:1.5px solid currentColor;transform:translateY(1px) rotate(-45deg);transition:transform .25s ease}
+  #controls.open #bC .chev{transform:translateY(-3px) rotate(135deg)}
+  button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+  .btn{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+       padding:10px 14px;border:1px solid var(--line);border-radius:999px;color:var(--dim);
+       background:rgba(0,0,0,.35);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+       transition:color .2s,border-color .2s,background .2s}
+  .btn:hover{color:var(--ink);border-color:rgba(244,236,221,.4)}
+  .btn:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  .btn[aria-pressed="true"]{color:#120c05;background:var(--amber);border-color:var(--amber)}
+  .btn kbd{font:inherit;opacity:.55;margin-left:.6em}
+  #hint{left:50%;bottom:46px;transform:translateX(-50%);font-family:var(--mono);font-size:11.5px;
+        letter-spacing:.08em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+  #hint.gone,body.riding #hint{opacity:0}
+  #credit{left:28px;bottom:18px;max-width:46vw;line-height:1.5;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--faint);text-shadow:0 0 10px #000,0 1px 2px #000;pointer-events:none}
+  body.readout #credit{display:none}
+  #nebCredits p{font-size:13px;line-height:1.45;margin:0 0 8px}
+  #nebCredits span{color:var(--ink)}
+  #note{left:50%;bottom:46px;transform:translateX(-50%);font-family:var(--mono);font-size:11.5px;
+        letter-spacing:.08em;text-transform:uppercase;color:var(--dim);text-align:center;width:max-content;max-width:min(560px,46vw);line-height:1.8;
+        text-shadow:0 0 14px rgba(0,0,0,.9),0 1px 3px rgba(0,0,0,.9);opacity:0;pointer-events:none}
+  #note.on{opacity:1}
+  .rid{display:none} body.riding .rid{display:block} body.riding .orb{display:none}
+  #panel{position:fixed;z-index:5;top:0;right:0;height:100%;width:min(460px,92vw);padding:40px 40px 48px;
+         background:var(--panel);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+         border-left:1px solid var(--line);overflow:auto;transform:translateX(102%);
+         transition:transform .5s cubic-bezier(.2,.7,.2,1),visibility 0s .5s;visibility:hidden}
+  #panel.open{transform:none;visibility:visible;transition:transform .5s cubic-bezier(.2,.7,.2,1),visibility 0s}
+  #panel h2{margin:0 0 6px;font-weight:400;font-size:24px}
+  #panel h3{margin:30px 0 8px;font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:.1em;
+            text-transform:uppercase;color:var(--amber)}
+  #panel p{margin:0 0 10px;font-size:15px;line-height:1.55;color:var(--dim)}
+  #panel .eq{font-family:var(--mono);font-size:13px;color:var(--ink);padding:10px 12px;margin:8px 0 12px;
+             border:1px solid var(--line);border-radius:8px;background:rgba(0,0,0,.3);line-height:1.7}
+  #panel table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin:8px 0 12px}
+  #panel td,#panel th{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;font-weight:400}
+  #panel td:first-child,#panel th:first-child{text-align:left;color:var(--dim)}
+  #panel th{color:var(--faint);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+  #close{position:absolute;top:30px;right:30px;width:36px;height:36px;border:1px solid var(--line);border-radius:50%;
+         font-family:var(--mono);color:var(--dim)}
+  #close:hover{color:var(--ink)}
+  #fallback{position:fixed;inset:0;z-index:9;display:none;place-items:center;text-align:center;padding:40px;
+            background:radial-gradient(circle at 50% 50%,#000 0 90px,#ffb469 92px,#3a1606 150px,#000 420px)}
+  #fallback div{margin-top:520px;max-width:440px;color:var(--dim);font-size:16px;line-height:1.5}
+  @media (max-width:1100px){#hint{bottom:96px}}
+  @media (max-width:1360px){body.readout #hint{left:50%;bottom:150px}}
+  @media (max-width:900px){#hud .opt{display:none}.btn kbd{display:none}}
+  @media (prefers-reduced-motion:reduce){.ui,#panel{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="gl" aria-label="Live rendering of a black hole and its accretion disk"></canvas>
+<canvas id="guide"></canvas>
+<div id="scrim"></div>
+
+<header id="title" class="ui">
+  <h1>Photon Ring</h1>
+</header>
+
+<div id="hud" class="ui" aria-live="off">
+  <div><span class="k">distance</span><b id="hR">30.0</b> r<sub>s</sub></div>
+  <div class="orb"><span class="k">above the disk</span><b id="hI">8</b>&deg;</div>
+  <div class="orb opt"><span class="k">clock rate here</span><b id="hC">0.983</b> of far away</div>
+  <div class="rid"><span class="k">speed</span><b id="hV">0.00</b></div>
+  <div class="rid"><span class="k">your clock</span><b id="hT">0.0</b> rₛ/c</div>
+  <div class="rid"><span class="k">far-away clock</span><b id="hTf">0.0</b></div>
+  <div class="rid"><span class="k">playback speed</span><b id="hP">1.00</b></div>
+  <div class="opt"><span class="k">render</span><b id="hQ">100</b>% &middot; <b id="hF">60</b> fps</div>
+</div>
+
+<div id="note" class="ui"></div>
+<div id="credit" class="ui">Nebula images: NASA, ESA and the Hubble teams. Full credits under How it works.</div>
+<div id="hint" class="ui">Drag to orbit &nbsp;&middot;&nbsp; Scroll to approach &nbsp;&middot;&nbsp; Click to launch &nbsp;&middot;&nbsp; Hold, then drag to aim &nbsp;&middot;&nbsp; R to ride &nbsp;&middot;&nbsp; N for the next nebula</div>
+
+<nav id="controls" class="ui" aria-label="Controls">
+  <div id="drawer">
+    <div class="row" role="group" aria-label="What a click launches">
+      <span class="lab">Click to launch, hold and drag to aim</span>
+      <button class="btn sm" data-launch="any" aria-pressed="true">Any</button>
+      <button class="btn sm" data-launch="meteor" aria-pressed="false">Meteor</button>
+      <button class="btn sm" data-launch="planet" aria-pressed="false">Planet</button>
+      <button class="btn sm" data-launch="star" aria-pressed="false">Star</button>
+      <button class="btn sm" data-launch="rocket" aria-pressed="false">Rocket</button>
+    </div>
+    <div class="row">
+      <span class="lab">Spin</span><input id="spin" type="range" min="0" max="0.95" step="0.01" value="0.9" aria-label="Spin of the black hole, as a fraction of the most it could have"><span class="lab" id="spinV">0.90</span>
+    </div>
+    <div class="row">
+      <button class="btn" id="bG" aria-pressed="true" title="Bend light (G)">Gravity<kbd>G</kbd></button>
+      <button class="btn" id="bD" aria-pressed="true" title="Doppler and redshift (D)">Redshift<kbd>D</kbd></button>
+      <button class="btn" id="bP" aria-pressed="false" title="Draw the predicted shadow edge (P)">Prediction<kbd>P</kbd></button>
+      <button class="btn" id="bS" aria-pressed="false" title="Sound (S)">Sound<kbd>S</kbd></button>
+    </div>
+    <div class="row">
+      <button class="btn" id="bR" aria-pressed="false" title="Fall in with the last thing you launched (R)">Ride along<kbd>R</kbd></button>
+      <button class="btn" id="bX" title="Remove launched objects (X)">Clear objects<kbd>X</kbd></button>
+      <button class="btn" id="bT" title="Turn to face the next nebula (N)">Next nebula<kbd>N</kbd></button>
+      <button class="btn" id="bL" aria-pressed="false" title="Turn the camera to look around the sky, and zoom like a telescope (L)">Look around<kbd>L</kbd></button>
+      <button class="btn" id="bN" aria-pressed="false" title="Show distance, clocks and frame rate">Readout</button>
+      <button class="btn" id="bH" aria-expanded="false" aria-controls="panel">How it works</button>
+    </div>
+  </div>
+  <button class="btn" id="bC" aria-expanded="false" aria-controls="drawer">Controls<span class="chev"></span></button>
+</nav>
+
+<aside id="panel" aria-label="How it works">
+  <button id="close" aria-label="Close">&#x2715;</button>
+  <h2>How it works</h2>
+  <p>Nothing here is a picture or a video. Your graphics card draws every frame from the equations below.</p>
+
+  <h3>1. Light paths</h3>
+  <p>For each pixel, one ray is traced backward from the camera. The hole spins, so the space around it is the Kerr solution. The page writes it in Kerr-Schild form: flat space plus one extra term.</p>
+  <div class="eq">g = &eta; + f l l<br>f = r<sub>s</sub> r&sup3; / (r&#8308; + a&sup2;y&sup2;)</div>
+  <p>Here a is the spin and y is the height above the disk. Each ray obeys Hamilton's equations for</p>
+  <div class="eq">H = &frac12; g<sup>&mu;&nu;</sup> p<sub>&mu;</sub> p<sub>&nu;</sub></div>
+  <p>stepped with a fourth-order Runge-Kutta integrator, up to <span id="pSteps">320</span> steps per pixel. These coordinates stay finite at the horizon, which is what lets the camera cross it.</p>
+
+  <h3>2. The disk</h3>
+  <p>Gas orbits in a thin disk that starts at the innermost stable orbit. Without spin that is 3 r<sub>s</sub>. Spin pulls it inward, to 1.16 r<sub>s</sub> at a spin of 0.9, where the gas is hotter and faster. Its color is a black body at the temperature the camera measures after the frequency shift</p>
+  <div class="eq">g = (p &middot; u)<sub>camera</sub> / (p &middot; u)<sub>gas</sub></div>
+  <p>where p is the light's momentum and u is a four-velocity. The Doppler shift, the pull of gravity on the light and the camera's own motion all come out of that one ratio. Brightness scales as g&#8308;. The temperature across the disk follows the relativistic thin-disk formula of Page and Thorne (1974).</p>
+
+  <h3>3. What you are seeing</h3>
+  <p>The arc over the top of the shadow is the far side of the disk. Its light was bent up and over the hole. The thin bright rings hugging the shadow are light that circled the hole before escaping. The shadow is not round: on the side where the spin turns toward you, light can pass closer and still escape, so that edge is flattened. Slide the spin to 0 and it becomes a circle.</p>
+
+  <h3>4. The page checks itself</h3>
+  <p>General relativity gives exact values for how close light can pass the hole and still escape, on each side. On load, and whenever you change the spin, the same stepping rule runs in JavaScript and is compared with them.</p>
+  <table>
+    <tr><th>Quantity</th><th>This page</th><th>Exact</th></tr>
+    <tr><td>Closest pass that escapes, going with the spin (r<sub>s</sub>)</td><td id="cB">&hellip;</td><td id="cBx">&hellip;</td></tr>
+    <tr><td>The same, going against the spin</td><td id="cD">&hellip;</td><td id="cDx">&hellip;</td></tr>
+  </table>
+  <p>The Prediction button draws the exact shadow edge (Bardeen, 1973) for wherever the camera is and however it moves, so you can see the two agree.</p>
+
+  <h3>5. Things you launch</h3>
+  <p>Click to launch a meteor, a planet, a star or a rocket. Hold, then drag, to choose its direction and speed. The blue glow is the path it will take. Each one free-falls by the same equations as the light, with mass. An orbit swings around instead of closing, and anything that comes too near is pulled in.</p>
+  <p>Each object is drawn where it was when the light now reaching you left it. That is why something falling in never seems to arrive: its last light takes longer and longer to climb out, so it reddens and fades just outside the horizon.</p>
+
+  <h3>6. Drag and tides</h3>
+  <p>An orbit does not decay by itself. Things fall in here because the disk slows them. Inside the disk an object is dragged toward the speed of the gas, which circles the hole and drifts inward. Where it ploughs through, the heated gas glows.</p>
+  <p>Gravity pulls harder on the near side of an object than on the far side. Close in, that difference beats the gravity holding a planet or a star together, at a distance of about</p>
+  <div class="eq">(3 M<sub>hole</sub> / 4&pi;&rho;)<sup>1/3</sup></div>
+  <p>where &rho; is the object's density. For a hole of 4.3 million Suns, the mass of the one at the centre of our galaxy, a planet as dense as Earth comes apart at 5.7 r<sub>s</sub> and a star like the Sun at 8.9 r<sub>s</sub>. The page then swaps the object for a few hundred pieces that keep its velocity but start at different points across it, so each follows its own orbit and they spread into a stream. A meteor or a rocket is held together by the strength of its material, and stays whole.</p>
+  <p>The debris is drawn by the same ray tracer, as glowing gas, so it is bent, doubled and color-shifted like everything else.</p>
+
+  <h3>7. Riding along</h3>
+  <p>Ride along puts the camera on the path of the last thing you launched, or on a path of its own if nothing is flying. A moving camera sees two more effects. Light from the direction of travel arrives bunched together and shifted toward blue. Light from behind is spread out and reddened. Brightness follows the fourth power of that shift, which is why the rings blaze on the way in.</p>
+  <p>The camera crosses the horizon in a finite time on its own clock, while the far-away clock runs off without limit. Inside, light from outside still arrives, so the sky stays in view beside the shadow. The ride stops between the hole's outer and inner horizons.</p>
+  <p>With the spin at 0, a camera falling straight in from rest should see the shadow's edge 42.1&deg; from its middle at the moment of crossing. Tested against that exact curve, the render agrees within about 0.5%, from 4 r<sub>s</sub> down to 0.35 r<sub>s</sub>.</p>
+
+  <h3>8. The nebulae</h3>
+  <p>The twelve nebulae are real Hubble Space Telescope images. Each sits where it really is among the stars, turned the way it really lies, using the coordinates published with the image. Their light is bent by the hole like everything else: drag the camera until one is behind the hole and it smears into arcs. Press N to turn and face each one in turn, or L to look around freely, and scroll to zoom like a telescope. The name and credit of the nebula in front of you show at the bottom left.</p>
+
+  <h3>What is not physics</h3>
+  <p>The streaks in the disk are procedural noise, drawn for texture. The stars brighter than magnitude 6.5 are real: their positions, brightness and colors come from the Yale Bright Star Catalogue, and the band of the Milky Way lies on the real galactic plane. It is the sky as seen from Earth, placed around a hole that is not there. The fainter stars, the soft gas clouds, the small galaxies and the texture of the band are invented. The Hubble images are real but drawn far too large: at their true size every one would be smaller than the Moon, most of them specks. The enlargement of each is listed with its credit below. Their brightness is set for the eye, and each is a flat picture on the sky, not a cloud you could fly through. The exposure and the disk's overall temperature scale are set for the eye. The disk has no thickness.</p>
+  <p>Launched objects are drawn far too large for the hole: at this scale the Sun would be a tenth of an r<sub>s</sub> across and Earth a dot. The disk's drag is set far stronger than a real disk's, so that things fall in while you watch. Debris is kept on a grid with cells 0.3 r<sub>s</sub> wide, does not collide or join the disk, and fades after a while. Its fading close to the horizon is set by hand. The rocket only coasts. The looks and lighting of objects are decoration, and the color shift of their reflected light is approximate.</p>
+  <p>For the disk, the delay of light is added up along each ray. For objects it is the straight-line time plus the standard first-order gravitational delay, with the exact extra delay close to the horizon, and an object's second image uses the same delay as its first.</p>
+  <p>On a ride, playback slows as you fall so the last part can be watched, the exposure closes down when the view fills with bright gas, and the rest of the scene never runs more than three times faster than your own clock. The camera is not torn apart. Directions that receive no light from outside are drawn black. Below the inner horizon the textbook solution stops describing a real hole, so the ride ends before it.</p>
+
+  <h3>Credit</h3>
+  <p>Made by Walker Robinson with Claude. Nebula images from ESA/Hubble (esahubble.org), used under the Creative Commons Attribution 4.0 licence:</p>
+  <div id="nebCredits"></div>
+  <p>Star positions from the Yale Bright Star Catalogue, 5th revised edition (Hoffleit and Warren, 1991).</p>
+</aside>
+
+<div id="fallback"><div>This page draws a black hole with WebGL2, which this browser or device does not offer. Try a current desktop Chrome, Edge, Firefox or Safari.</div></div>
+
+<script>
+"use strict";
+// Kerr geometry in Kerr-Schild coordinates, spin axis along +y. Units: r_s = 1, so M = 1/2.
+// K.a is the spin length a = (spin fraction) * M. State: position x[3] and covariant momentum p[3]; pt = p_t = -E is conserved.
+/*<kerr>*/
+const K={a:0,M:.5};
+const kdot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function kr(x){ const a2=K.a*K.a, w=kdot(x,x)-a2; return Math.sqrt(.5*(w+Math.sqrt(w*w+4*a2*x[1]*x[1]))); }
+function khor(){ return K.M+Math.sqrt(Math.max(0,K.M*K.M-K.a*K.a)); }
+// the metric is g = eta + f l l, with l_mu = (1, l). Returns r and fills l.
+function kfl(x,l){ const a=K.a, r=kr(x), B=r*r+a*a;
+  l[0]=(r*x[0]-a*x[2])/B; l[1]=x[1]/r; l[2]=(r*x[2]+a*x[0])/B;
+  return r; }
+function kf(x,r){ return 2*K.M*r*r*r/(r*r*r*r+K.a*K.a*x[1]*x[1]); }
+// Hamilton's equations for H = (1/2) g^{mu nu} p_mu p_nu. d = [dx0,dx1,dx2, dp0,dp1,dp2, dt]
+const _l=[0,0,0];
+function kderiv(x,p,pt,d){
+  const a=K.a, a2=a*a, r=kfl(x,_l), r2=r*r, B=r2+a2, y=x[1], den=r2*r2+a2*y*y, f=2*K.M*r2*r/den;
+  const L=kdot(_l,p)-pt;
+  d[0]=p[0]-f*L*_l[0]; d[1]=p[1]-f*L*_l[1]; d[2]=p[2]-f*L*_l[2]; d[6]=-pt+f*L;
+  const q=r*(2*r2-kdot(x,x)+a2), g0=x[0]*r2/q, g1=(y*r2+a2*y)/q, g2=x[2]*r2/q;       // grad r
+  const c1=2*K.M*(3*r2*den-4*r2*r2*r2)/(den*den), c2=-2*K.M*r2*r*2*a2*y/(den*den);    // grad f = c1 grad r + c2 yhat
+  const S=x[0]*p[0]+x[2]*p[2], A=r*S+a*(x[0]*p[2]-x[2]*p[0]), e=-2*A*r/(B*B), py=p[1];
+  const G0=(g0*S+r*p[0]+a*p[2])/B+e*g0-py*y*g0/r2;
+  const G1=(g1*S)/B+e*g1+py*(1/r-y*g1/r2);
+  const G2=(g2*S+r*p[2]-a*p[0])/B+e*g2-py*y*g2/r2;
+  const h=.5*L*L, k=f*L;
+  d[3]=h*c1*g0+k*G0; d[4]=h*(c1*g1+c2)+k*G1; d[5]=h*c1*g2+k*G2;
+}
+// one fourth-order Runge-Kutta step of size h in the path parameter; returns the change in time
+const _k1=new Float64Array(7), _k2=new Float64Array(7), _k3=new Float64Array(7), _k4=new Float64Array(7), _x=[0,0,0], _p=[0,0,0];
+function kstep(x,p,pt,h){
+  kderiv(x,p,pt,_k1);
+  for(let i=0;i<3;i++){ _x[i]=x[i]+.5*h*_k1[i]; _p[i]=p[i]+.5*h*_k1[i+3]; } kderiv(_x,_p,pt,_k2);
+  for(let i=0;i<3;i++){ _x[i]=x[i]+.5*h*_k2[i]; _p[i]=p[i]+.5*h*_k2[i+3]; } kderiv(_x,_p,pt,_k3);
+  for(let i=0;i<3;i++){ _x[i]=x[i]+h*_k3[i]; _p[i]=p[i]+h*_k3[i+3]; } kderiv(_x,_p,pt,_k4);
+  for(let i=0;i<3;i++){ x[i]+=h/6*(_k1[i]+2*_k2[i]+2*_k3[i]+_k4[i]); p[i]+=h/6*(_k1[i+3]+2*_k2[i+3]+2*_k3[i+3]+_k4[i+3]); }
+  return h/6*(_k1[6]+2*_k2[6]+2*_k3[6]+_k4[6]);
+}
+function kH(x,p,pt){ const r=kfl(x,_l), f=kf(x,r), L=kdot(_l,p)-pt; return .5*(kdot(p,p)-pt*pt)-.5*f*L*L; }
+// lower an index: four-velocity (ut, u) to covariant momentum per unit mass. Returns pt, fills p.
+function klower(x,ut,u,p){ const l=[0,0,0], r=kfl(x,l), f=kf(x,r), s=f*(ut+kdot(l,u));
+  p[0]=u[0]+s*l[0]; p[1]=u[1]+s*l[1]; p[2]=u[2]+s*l[2]; return -ut+s; }
+// inner product of two four-vectors [t,x,y,z] at x
+function kip(x,A,B){ const l=[0,0,0], r=kfl(x,l), f=kf(x,r);
+  return -A[0]*B[0]+A[1]*B[1]+A[2]*B[2]+A[3]*B[3]+f*(A[0]+l[0]*A[1]+l[1]*A[2]+l[2]*A[3])*(B[0]+l[0]*B[1]+l[1]*B[2]+l[2]*B[3]); }
+// time component that makes a coordinate velocity v = dx/dt into a four-velocity (0 if no such observer)
+function kut(x,v){ const n=kip(x,[1,v[0],v[1],v[2]],[1,v[0],v[1],v[2]]); return n<0?1/Math.sqrt(-n):0; }
+// gas on a prograde circular orbit in the equatorial plane: angular velocity, innermost stable orbit, energy
+function komega(r){ return Math.sqrt(K.M)/(Math.pow(r,1.5)+K.a*Math.sqrt(K.M)); }
+function kisco(){ const s=K.a/K.M, z1=1+Math.cbrt(1-s*s)*(Math.cbrt(1+s)+Math.cbrt(1-s)), z2=Math.sqrt(3*s*s+z1*z1);
+  return K.M*(3+z2-Math.sqrt((3-z1)*(3+z1+2*z2))); }
+// velocity dx/dt of that gas at an equatorial point x (the hole and the disk both turn about +y)
+function kgas(x){ const r=kr(x), om=komega(r); return [om*x[2],0,-om*x[0]]; }
+// an observer's frame: four-velocity U and three unit four-vectors along the space directions w[0..2], made orthonormal in the metric
+function kframe(x,U,w){ const E=[U.slice()];
+  for(let i=0;i<3;i++){ let e=[0,w[i][0],w[i][1],w[i][2]]; const c0=kip(x,e,U); e=e.map((v,j)=>v+c0*U[j]);
+    for(let j=1;j<E.length;j++){ const c=kip(x,e,E[j]); e=e.map((v,m)=>v-c*E[j][m]); }
+    const n=Math.sqrt(kip(x,e,e)); E.push(e.map(v=>v/n)); }
+  return E; }
+// four-velocity of an observer hovering at x (none exists inside the ergosphere)
+function khover(x){ const ut=kut(x,[0,0,0]); return ut?[ut,0,0,0]:null; }
+// photon reaching the observer from direction d of its frame (d along right, up, forward): fills covariant p, returns pt. The observer measures frequency 1.
+function kphoton(x,E,d,p){ const k=[0,1,2,3].map(m=>E[0][m]-d[0]*E[1][m]-d[1]*E[2][m]-d[2]*E[3][m]); return klower(x,k[0],[k[1],k[2],k[3]],p); }
+// the direction in the observer's frame from which it sees a photon with covariant momentum (pt, p), and the frequency it measures
+function kseen(E,pt,p){ const c=e=>pt*e[0]+p[0]*e[1]+p[1]*e[2]+p[2]*e[3], om=-c(E[0]); return {om,d:[-c(E[1])/om,-c(E[2])/om,-c(E[3])/om]}; }
+// The exact edge of the shadow (Bardeen 1973): photons that just graze the unstable spherical light orbits of radius rp.
+// Returns their covariant momenta at x, with energy 1. Spin 0 is the single orbit at 1.5 r_s.
+function kedge(x,n){ const a=K.a, M=K.M, r=kr(x), out=[], ct=x[1]/r, st=Math.sqrt(Math.max(1e-12,1-ct*ct)), D=r*r-2*M*r+a*a;
+  const s=a/M, r1=a?2*M*(1+Math.cos(2/3*Math.acos(-s))):3*M, r2=a?2*M*(1+Math.cos(2/3*Math.acos(s))):3*M;
+  // gradients of r, theta and the Kerr-Schild angle, by differences
+  const ph=q=>Math.atan2(q[0],q[2])-Math.atan2(a,kr(q)), th=q=>Math.acos(q[1]/kr(q)), h=1e-5*Math.max(1,r), gr=[0,0,0], gt=[0,0,0], gp=[0,0,0];
+  for(let i=0;i<3;i++){ const u=x.slice(), v=x.slice(); u[i]+=h; v[i]-=h; gr[i]=(kr(u)-kr(v))/(2*h); gt[i]=(th(u)-th(v))/(2*h);
+    let dp=ph(u)-ph(v); if(dp>Math.PI) dp-=2*Math.PI; if(dp<-Math.PI) dp+=2*Math.PI; gp[i]=dp/(2*h); }
+  for(let i=0;i<n;i++){ for(const sg of [1,-1]){
+    const rp=a?r1+(r2-r1)*(.5-.5*Math.cos(Math.PI*(i+.5)/n)):r1;
+    let xi, eta;
+    if(a){ xi=-(rp*rp*rp-3*M*rp*rp+a*a*rp+a*a*M)/(a*(rp-M)); eta=rp*rp*rp*(4*M*a*a-rp*(rp-3*M)*(rp-3*M))/(a*a*(rp-M)*(rp-M)); }
+    else { const an=Math.PI*(i+.5)/n; xi=Math.sqrt(27)*M*st*Math.cos(an); eta=27*M*M-xi*xi; } // spin 0: any split of the total with xi^2 + eta = 27 M^2
+    const Th=eta+a*a*ct*ct-xi*xi*ct*ct/(st*st); if(Th<0) continue;
+    const R=Math.max(0,Math.pow(r*r+a*a-a*xi,2)-D*(eta+(xi-a)*(xi-a)));
+    const prBL=(r>rp?1:-1)*Math.sqrt(R)/D, prKS=prBL+(2*M*r-a*xi)/D, pth=sg*Math.sqrt(Th);
+    out.push({pt:-1,p:[0,1,2].map(j=>prKS*gr[j]+pth*gt[j]+xi*gp[j]),rp,sg}); } }
+  return out; }
+// Radius below which a light ray heading inward cannot come back: a little inside the innermost light orbit.
+// (Rays traced backward toward the hole pile up at the horizon in these coordinates, so they are stopped here.)
+function kcap(){ const s=K.a/K.M, rp=2*K.M*(1+Math.cos(2/3*Math.acos(-s))), rh=khor(); return rh+.35*(rp-rh); }
+// Energy a thin disk radiates per unit area at radius r, up to a constant (Page and Thorne 1974): zero at the
+// innermost stable orbit, and the Newtonian r^-3 (1 - sqrt(r_in/r)) far out.
+function kflux(r){ const s=K.a/K.M, x=Math.sqrt(r/K.M), x0=Math.sqrt(kisco()/K.M); if(x<=x0) return 0;
+  const c=Math.acos(s)/3, x1=2*Math.cos(c-Math.PI/3), x2=2*Math.cos(c+Math.PI/3), x3=-2*Math.cos(c);
+  const t=(xa,xb,xc)=>3*(xa-s)*(xa-s)/(xa*(xa-xb)*(xa-xc))*Math.log((x-xa)/(x0-xa));
+  return (x-x0-1.5*s*Math.log(x/x0)-t(x1,x2,x3)-t(x2,x1,x3)-t(x3,x1,x2))/(x*x*x*x*(x*x*x-3*x+2*s)); }
+/*</kerr>*/
+
+// Packed from the Yale Bright Star Catalogue, 5th revised edition (Hoffleit and Warren 1991): 9096 entries, 6 bytes each
+// (right ascension and declination as 16-bit fractions, magnitude as (V + 2) x 25, colour as (B-V + 0.5) x 100).
+const STARS="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aSA+Tb6nacnW68+baTA9zKSqaRorfMO6aQ0mw722aYyIecfYaWpZINBwaefG2rY5amHnpsSkaaNbHqytaWwxP9QkabFgBM42aizRqcaLacFk9q7PaZI3QsYjaac/mMEnagiMtMSjacA4i8ExakG6Y7Jgak3AltChafhF8NLTahdaPc9Iag9QeMSqah1Y7NBDbDD3WdHKagU2/dEhamOnetBualmRsrYualWL08m6aqTQzLvEahsyZIoqaio1I8slapiqKcGcakI7JckkafwaeNEqap2E0NlNaoFd8M0oandM9LVRai0kSNajaiEduc0oarSLcKjSatitZrh0ayqfN8AfasQvAtWUa3zMpcJiavY0Gs0laytUg9WpawQub82ia5bKe8xua1JyYsvYawUqEcZMa2eEjdNaa1Jb/tkya2JmQcQsa0I9rMs0a3BddsBQazMqac1DaysnmdLea3JHJdO0a62WadFXa5Nta6Upa00n/cwua5lMQc+ha9+H+82Qa/yyIKJEa/iX14ova8Q8obGKa/Bnn77Ia8E1x9WUbCKs8s5fbBKON5/DbBR/eKIubCeRBVQnassLErw1bBhK59GUbDlwhdU0bDFpzM8xbJ651NCvbG9uzM5EbHd0CsY0bEE2UKwmbHZtxbdWbFxNActubKm1McSzbIxuboyXbDciZbaUbJx0B7+0a2YL/9eObLyS/tNgbFQodr7SbKx1mM4zbI5ErMiubFseUcM0bM9XUM8zbPGGkMKobOlkwtNkbSCml8mHbLosVdLYbVvVT87SbMItbcEqbN410MynbQlZj85RbT6eGshqbQ1RBdFtbVqswNRubR1Gnsarbd7n7NJJbQs3IrZLbPsqyMoqbSVGq9GQbQ82ZMJAbdblD9hSbQooT9InbUlEGJI3bY2pr7gzbREhmrNHbd/cmMQ+bZioytRubY+ZOtZubWVMEM2cbZuhbcd1baKhTYhRbaKkFcSqbbS9CIg1bYlwEcqgbaGThrnTbW1Cr77KbRscZIUqbWEx0Mwhbbug3MRkbaVimtZibeWm/dUwbc10hrVRbYUqzs1GbgrCgNNubaE3LdDMbh/E1MiYbmnhxcdGbgujJdJubeNWxLhKbbQoxYfMbkTMfNNoblDNG8ijbfpLqNCybiybsapfbhhuLshMbfNEvccsbjecOHOlbjecN5FubiN4vdGM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";
+// rotation from equatorial coordinates (J2000) to the scene, and the Milky Way's pole and centre in the scene
+const SKY_ROT=[0.868908, -0.491167, -0.061264, 0.028706, -0.073561, 0.996878, -0.49414, -0.867954, -0.049818], GAL_POLE=[-0.68457, 0.44422, 0.57795], GAL_CENTRE=[0.41096, -0.41965, 0.80932];
+
+// Hubble images from ESA/Hubble (esahubble.org), Creative Commons Attribution 4.0. Position, field of view and orientation are
+// the values published with each image. 'half' is the half-width each is drawn at, in degrees; 'enlarged' is how many times too big that is.
+const NEBULAE=[{"id":"heic0601a","name":"Orion Nebula (M42)","credit":"NASA, ESA, M. Robberto (Space Telescope Science Institute/ESA) and the Hubble Space Telescope Orion Treasury Project Team","ra":83.79054,"dec":-5.41398,"fov":[30.03,30.03],"north":0.0,"half":7.0,"enlarged":28},{"id":"heic1307a","name":"Horsehead Nebula, infrared","credit":"NASA, ESA, and the Hubble Heritage Team (AURA/STScI)","ra":85.25413,"dec":-2.45331,"fov":[5.78,6.04],"north":103.0,"half":2.4,"enlarged":50},{"id":"heic0515a","name":"Crab Nebula (M1)","credit":"NASA, ESA and Allison Loll/Jeff Hester (Arizona State University). Acknowledgement: Davide De Martin (ESA/Hubble)","ra":83.63554,"dec":22.01524,"fov":[6.41,6.41],"north":0.0,"half":5.0,"enlarged":94},{"id":"heic1007a","name":"Mystic Mountain, Carina Nebula","credit":"NASA, ESA, M. Livio and the Hubble 20th Anniversary Team (STScI)","ra":161.00992,"dec":-59.50821,"fov":[1.39,1.28],"north":165.5,"half":7.0,"enlarged":604},{"id":"heic1206a","name":"Tarantula Nebula (30 Doradus)","credit":"NASA, ESA, ESO, D. Lennon and E. Sabbi (ESA/STScI) and the full team listed at esahubble.org/images/heic1206a","ra":84.57117,"dec":-69.1259,"fov":[13.41,10.73],"north":35.0,"half":7.0,"enlarged":63},{"id":"heic0910h","name":"Butterfly Nebula (NGC 6302)","credit":"NASA, ESA and the Hubble SM4 ERO Team","ra":258.43233,"dec":-37.10348,"fov":[2.35,2.74],"north":-128.4,"half":6.0,"enlarged":306},{"id":"heic1501a","name":"Pillars of Creation, Eagle Nebula (M16)","credit":"NASA, ESA/Hubble and the Hubble Heritage Team","ra":274.71967,"dec":-13.83944,"fov":[4.53,4.72],"north":35.0,"half":6.5,"enlarged":172},{"id":"heic2608a","name":"Trifid Nebula (M20)","credit":"NASA, ESA, STScI. Image processing: J. DePasquale (STScI)","ra":270.61938,"dec":-23.07418,"fov":[2.69,2.6],"north":44.9,"half":4.0,"enlarged":178},{"id":"heic1310a","name":"Ring Nebula (M57)","credit":"NASA, ESA, and C. Robert O'Dell (Vanderbilt University)","ra":283.39671,"dec":33.02893,"fov":[2.1,2.1],"north":11.7,"half":5.5,"enlarged":314},{"id":"heic1608a","name":"Bubble Nebula (NGC 7635)","credit":"NASA, ESA, Hubble Heritage Team","ra":350.17537,"dec":61.19122,"fov":[5.19,4.93],"north":33.6,"half":6.0,"enlarged":139},{"id":"heic0414a","name":"Cat's Eye Nebula (NGC 6543)","credit":"ESA, NASA, HEIC and The Hubble Heritage Team (STScI/AURA)","ra":269.63858,"dec":66.63282,"fov":[1.17,1.17],"north":144.6,"half":5.0,"enlarged":513},{"id":"opo0432d","name":"Helix Nebula (NGC 7293)","credit":"NASA, ESA, C.R. O'Dell (Vanderbilt University), and M. Meixner, P. McCullough, and G. Bacon (Space Telescope Science Institute)","ra":337.42467,"dec":-20.83703,"fov":[27.26,29.38],"north":0.3,"half":7.5,"enlarged":33}];
+const NEBULA_IMG=NEBULAE.map(n=>'sky/'+n.id+'.jpg'); // the live page loads the images from the sky folder
+
+function main(){
+const $=id=>document.getElementById(id);
+const canvas=$('gl'), guide=$('guide'), g2=guide.getContext('2d');
+const gl=canvas.getContext('webgl2',{antialias:false,alpha:false,powerPreference:'high-performance'});
+if(!gl){ $('fallback').style.display='grid'; return; }
+
+const STEPS=320, ROUT=15.0;
+$('pSteps').textContent=STEPS;
+const hdr=!!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_half_float');
+
+/* ---------- shaders ---------- */
+const VS=`#version 300 es
+void main(){ vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2)); gl_Position=vec4(p*2.-1.,0.,1.); }`;
+
+const SCENE=`#version 300 es
+precision highp float;
+uniform vec2 uRes; uniform vec3 uCam;
+uniform mat4 uTet; // the camera's frame: its four-velocity, then right, up and forward, each as (x, y, z, t)
+uniform float uFocal,uTime,uDop,uEsc,uEnc,uProbe,uM,uA,uRh,uRcap,uRin,uRing,uVol; uniform vec3 uStep; uniform float uLing;
+uniform float uFlux[32];
+uniform highp sampler3D uNoise,uVolA,uVolB; uniform sampler2D uStars;
+uniform highp sampler2DArray uNeb; uniform vec4 uNebC[12],uNebR[12],uNebU[12],uNebG[12]; uniform float uNebLod,uNebOn; // telescope images: centre, right, up, gain
+uniform vec4 uB[6],uBA[6],uBG[6],uBV[6]; uniform int uNB; // launched objects: centre+radius, half-axis+kind, seed+reach, velocity+time rate
+out vec4 o;
+const float ROUT=${ROUT.toFixed(1)}, TAU=6.2831853;
+const vec2 OFF[8]=vec2[8](vec2(0),vec2(.375,.125),vec2(-.125,.375),vec2(-.375,-.125),vec2(.125,-.375),vec2(.25,.4),vec2(-.4,.2),vec2(.3,-.3));
+float gPt, gW; // for the ray being traced: its conserved p_t, and the frequency the camera measures, in the same units
+
+float hash21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
+float hash31(vec3 p){ p=fract(p*vec3(.1031,.1030,.0973)); p+=dot(p,p.yzx+33.33); return fract((p.x+p.y)*p.z); }
+float pnoise(vec2 p,float per){
+  vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+  float x0=mod(i.x,per), x1=mod(i.x+1.,per);
+  return mix(mix(hash21(vec2(x0,i.y)),hash21(vec2(x1,i.y)),f.x),
+             mix(hash21(vec2(x0,i.y+1.)),hash21(vec2(x1,i.y+1.)),f.x),f.y);
+}
+float streaks(float a,float r){
+  float s=0., amp=.5, per=5.; vec2 q=vec2(fract(a)*per, r*1.15);
+  for(int i=0;i<6;i++){ s+=amp*pnoise(q,per); q*=2.; q.y+=17.3; per*=2.; amp*=.5; }
+  return s;
+}
+// smooth 3D noise, read from a small texture of random values made at startup (far quicker to compile than hashing here)
+float vnoise(vec3 p){ vec3 f=fract(p); return textureLod(uNoise,(floor(p)+f*f*(3.-2.*f)+.5)/32.,0.).r; } // textureLod: no screen derivatives, so it can sit inside loops and branches
+float fbm3(vec3 p){ float s=0., a=.5; for(int i=0;i<5;i++){ s+=a*vnoise(p); p=p*2.03+7.1; a*=.5; } return s; }
+
+// black body colour, linear RGB, normalised (fit after Tanner Helland)
+vec3 bb(float T){
+  float t=clamp(T,1000.,40000.)/100.; vec3 c;
+  c.r = t<=66. ? 1. : 1.292936*pow(t-60.,-.1332047);
+  c.g = t<=66. ? .3900816*log(t)-.6318414 : 1.1298909*pow(t-60.,-.0755148);
+  c.b = t>=66. ? 1. : (t<=19. ? 0. : .5432068*log(t-10.)-1.1962541);
+  return pow(clamp(c,0.,1.),vec3(2.2));
+}
+
+// ----- the spinning hole, in Kerr-Schild coordinates with the spin along +y: g = eta + f l l -----
+float ksr(vec3 x){ float a2=uA*uA, w=dot(x,x)-a2; return sqrt(.5*(w+sqrt(w*w+4.*a2*x.y*x.y))); }
+float kfl(vec3 x,out vec3 l){ float r=ksr(x), B=r*r+uA*uA;
+  l=vec3((r*x.x-uA*x.z)/B, x.y/r, (r*x.z+uA*x.x)/B);
+  return 2.*uM*r*r*r/(r*r*r*r+uA*uA*x.y*x.y); }
+// Hamilton's equations for H = (1/2) g^{mu nu} p_mu p_nu: rates of change of position, momentum and time
+void deriv(vec3 x,vec3 p,out vec3 dx,out vec3 dp,out float dt){
+  float a=uA, a2=a*a, y=x.y, w=dot(x,x)-a2;
+  float r2=.5*(w+sqrt(w*w+4.*a2*y*y)), r=sqrt(r2), B=r2+a2, den=r2*r2+a2*y*y, f=2.*uM*r2*r/den;
+  vec3 l=vec3((r*x.x-a*x.z)/B, y/r, (r*x.z+a*x.x)/B);
+  float L=dot(l,p)-gPt;
+  dx=p-f*L*l; dt=-gPt+f*L;
+  vec3 gr=vec3(x.x*r2, y*(r2+a2), x.z*r2)/(r*(2.*r2-dot(x,x)+a2));
+  float c1=2.*uM*(3.*r2*den-4.*r2*r2*r2)/(den*den), c2=-4.*uM*r2*r*a2*y/(den*den);
+  float S=x.x*p.x+x.z*p.z, A=r*S+a*(x.x*p.z-x.z*p.x);
+  vec3 G=(gr*S+vec3(r*p.x+a*p.z,0.,r*p.z-a*p.x))/B-2.*A*r/(B*B)*gr+p.y*(vec3(0.,1./r,0.)-y*gr/r2);
+  dp=.5*L*L*(c1*gr+vec3(0.,c2,0.))+f*L*G;
+}
+// frequency the camera measures over the frequency measured by something at x moving with velocity v = dx/dt
+float shift(vec3 x,vec3 p,vec3 v){
+  vec3 l; float f=kfl(x,l), lv=1.+dot(l,v);
+  float n=1.-dot(v,v)-f*lv*lv, w=-(gPt+dot(p,v))*inversesqrt(max(n,1e-6));
+  return mix(1.,(n>0. && w>1e-4) ? gW/w : 0.,uDop); // nothing can move that way, or emit that light: no light
+}
+
+// the disk: gas on circular orbits. T: how long ago this light left, so the pattern is drawn as it was then
+vec4 disk(vec3 x,vec3 p,float order,float T){
+  float r=sqrt(max(dot(x.xz,x.xz)-uA*uA,1e-6)), sm=sqrt(max(uM,1e-6)), om=sm/(pow(r,1.5)+uA*sm);
+  float g=shift(x,p,om*vec3(x.z,0.,-x.x));
+  float phi=atan(-x.z,x.x)/TAU, t=uTime-T;
+  // two sheared noise layers, cross-faded so the wind-up never accumulates
+  const float PT=70.;
+  float t1=mod(t,PT), t2=mod(t+.5*PT,PT), w1=1.-abs(t1/PT*2.-1.);
+  float n1=streaks(phi-om*(t1-.5*PT)/TAU,r), n2=streaks(phi-om*(t2-.5*PT)/TAU+.37,r+31.);
+  float n=mix(n2,n1,w1);
+  n=.5+(n-.5)/sqrt(w1*w1+(1.-w1)*(1.-w1));
+  n=smoothstep(.22,.78,n);
+  n=mix(n,.55,clamp(order,0.,1.)*.75); // images that circled the hole are too thin to carry texture
+  float q=sqrt(clamp((r-uRin)/(ROUT-uRin),0.,1.))*31., qi=floor(min(q,30.));
+  float Tn=pow(max(mix(uFlux[int(qi)],uFlux[int(qi)+1],q-qi),0.),.25); // temperature from the relativistic thin-disk flux
+  vec3 c=bb(5200.*Tn*g)*pow(Tn*g,4.)*(.25+1.35*n*n)*.95;
+  float al=smoothstep(ROUT,ROUT*.55,r)*smoothstep(uRin,uRin+.25,r)*(.5+.5*n);
+  return vec4(c,clamp(al,0.,1.));
+}
+
+float ridge(vec3 p){ float s=0., a=.5; for(int i=0;i<4;i++){ s+=a*(1.-abs(2.*vnoise(p)-1.)); p=p*2.1+3.7; a*=.5; } return s; }
+// Clouds of glowing gas: filaments in one colour, denser knots in another, dark dust across them.
+// Only the cloud the direction falls in is worked out. Rows: red hydrogen with blue-green oxygen knots,
+// blue reflection clouds, pink and amber ones.
+const vec4 NEB[8]=vec4[8](vec4(-0.3730,0.0170,-0.9277,0.5),vec4(0.8081,-0.3030,0.5051,0.45),vec4(0.1502,-0.5507,-0.8211,0.34),vec4(-0.7027,-0.2008,0.6826,0.42),vec4(0.5503,0.6003,-0.5803,0.5),vec4(-0.2007,0.8530,0.4817,0.36),vec4(0.9510,0.1502,-0.2703,0.38),vec4(-0.1002,-0.9016,0.4208,0.46));
+const vec3 NEBA[8]=vec3[8](vec3(0.26,0.04,0.065),vec3(0.04,0.08,0.27),vec3(0.26,0.06,0.14),vec3(0.22,0.055,0.03),vec3(0.2,0.035,0.07),vec3(0.05,0.1,0.25),vec3(0.24,0.07,0.03),vec3(0.21,0.04,0.09));
+const vec3 NEBB[8]=vec3[8](vec3(0.05,0.2,0.22),vec3(0.2,0.16,0.28),vec3(0.28,0.19,0.08),vec3(0.08,0.22,0.19),vec3(0.06,0.15,0.24),vec3(0.22,0.1,0.2),vec3(0.25,0.2,0.1),vec3(0.05,0.19,0.2));
+vec3 nebulae(vec3 d){
+  float w=0., size=1.; vec3 ca=vec3(0), cb=vec3(0); float seed=0.;
+  for(int i=0;i<8;i++){ float wi=smoothstep(cos(NEB[i].w),cos(NEB[i].w*.3),dot(d,NEB[i].xyz));
+    if(wi>w){ w=wi; size=NEB[i].w; ca=NEBA[i]; cb=NEBB[i]; seed=1.7+7.3*float(i); } }
+  if(w<=0.) return vec3(0);
+  vec3 q=d*(1.9/size)+seed; q+=1.1*(vnoise(q*.8+4.)-.5);
+  float f=fbm3(q), r=ridge(q*1.6+2.);
+  float dens=smoothstep(.38,.75,f)*w;
+  vec3 col=mix(ca,cb,smoothstep(.5,.8,r)*smoothstep(.45,.7,f))*dens*(.25+1.5*r*r*r);
+  return col*smoothstep(.75,.4,.65*vnoise(q*2.4+11.)+.35*vnoise(q*5.3+3.));
+}
+// far spiral galaxies seen at a tilt: warm core, bluer arms
+const vec3 GALC[5]=vec3[5](vec3(-0.8329,0.0262,-0.5528),vec3(0.3506,0.5009,0.7913),vec3(0.3008,-0.2005,-0.9324),vec3(-0.4014,-0.7527,-0.5219),vec3(0.5997,-0.7497,0.2799));
+const vec3 GALX[5]=vec3[5](vec3(0.3,1.0,0.2),vec3(1.0,0.2,-0.4),vec3(0.2,1.0,0.1),vec3(1.0,0.1,0.3),vec3(0.1,0.3,1.0));
+const vec4 GALP[5]=vec4[5](vec4(0.16,0.42,1.0,0.3),vec4(0.11,0.7,4.0,0.24),vec4(0.09,0.3,2.2,0.26),vec4(0.13,0.55,5.1,0.22),vec4(0.08,0.85,3.3,0.25)); // size, tilt, arm phase, brightness
+vec3 galaxies(vec3 d){
+  int k=0; float best=-1.; for(int i=0;i<5;i++){ float m=dot(d,GALC[i]); if(m>best){ best=m; k=i; } }
+  vec3 c=GALC[k], ax=GALX[k]; float size=GALP[k].x, tilt=GALP[k].y, seed=GALP[k].z, amp=GALP[k].w;
+  if(dot(d,c)<cos(size*1.7)) return vec3(0);
+  vec3 e1=normalize(cross(c,ax)), e2=cross(c,e1);
+  vec2 p=vec2(dot(d,e1),dot(d,e2)/tilt)/size; float r=length(p), th=atan(p.y,p.x);
+  float arms=.5+.5*cos(2.*th-6.5*log(r+.04)+seed);
+  float n=vnoise(vec3(p*14.,seed));
+  float disc=exp(-r*3.4)*(.18+arms*arms*(.5+1.1*n*n));
+  vec3 col=mix(vec3(1.,.82,.58),vec3(.55,.72,1.),smoothstep(.08,.5,r)*arms);
+  return (col*disc+vec3(1.,.9,.72)*exp(-r*r*70.)*1.6)*smoothstep(1.7,.9,r)*amp;
+}
+vec3 sky(vec3 d,float g){
+  vec3 c=vec3(0);
+  for(int l=1;l<3;l++){ // invented filler: stars too faint for the catalogue
+    float S= l==0?34.: l==1?71.:139.;
+    vec3 q=d*S+float(l)*19.7; vec3 id=floor(q); vec3 f=fract(q)-.5;
+    float h=hash31(id);
+    vec3 off=(vec3(hash31(id+1.3),hash31(id+2.7),hash31(id+5.1))-.5)*.6;
+    float dist=length(f-off);
+    float on=step(.90,h);
+    float mag=pow(hash31(id+9.1),6.)*9.+.25;
+    float rad= l==0?.085: l==1?.12:.17;
+    float core=smoothstep(rad,0.,dist);
+    vec3 tint=bb((3500.+9000.*hash31(id+3.3))*g);
+    c+=on*mag*core*core*tint*(l==0?1.6: l==1?.8:.4);
+  }
+  { // the real stars brighter than magnitude 6.5, from the map of the whole sky
+    vec3 s=textureLod(uStars,vec2(atan(d.z,d.x)/TAU+.5,asin(clamp(d.y,-1.,1.))/3.14159265+.5),0.).rgb;
+    c+=s*s*40.*bb(6500.*g); }
+  // the galaxy seen from inside: a band of unresolved stars with a bright bulge and a lane of dust
+  vec3 n=vec3(-0.68457, 0.44422, 0.57795), gc=vec3(0.41096, -0.41965, 0.80932); // the real plane and centre of the Milky Way
+  float lat=dot(d,n), bulge=exp(-(1.-dot(d,gc))*5.);
+  float band=exp(-pow(lat*(3.4-1.6*bulge),2.));
+  float cl=fbm3(d*3.1+2.);
+  float dust=fbm3(d*7.3-4.);
+  float lane=smoothstep(.0,.1,abs(lat+.07*(dust-.5)))*.75+.25;
+  c+=band*(.006+.16*cl*cl*cl+.14*bulge*cl)*mix(vec3(.55,.62,1.),vec3(1.,.74,.5),clamp(cl+.5*bulge,0.,1.))*smoothstep(.75,.3,dust)*lane;
+  c+=nebulae(d)+galaxies(d);
+  for(int i=0;i<12;i++){ vec4 C=uNebC[i]; float z=dot(d,C.xyz); if(z<C.w) continue; // real telescope images, at their real places
+    vec2 q=vec2(dot(d,uNebR[i].xyz)*uNebR[i].w,dot(d,uNebU[i].xyz)*uNebU[i].w)/z;
+    if(max(abs(q.x),abs(q.y))>=1.) continue;
+    vec3 t=textureLod(uNeb,vec3(q*uNebG[i].z*.5+.5,float(i)),uNebLod+uNebG[i].y).rgb;
+    c+=t*t*uNebG[i].x*smoothstep(1.,.55,length(q))*bb(6500.*g)*uNebOn; } // fades to nothing before the picture's edge
+  return c*g*g*g*g; // brightness goes as the fourth power of the frequency shift
+}
+
+// Launched objects are capsules (a sphere when the axis is zero). Returns where along the step
+// p -> p+sd the ray enters object k, or 2 for a miss.
+float hitBody(int k,vec3 p,vec3 sd,float sl){
+  vec4 B=uB[k]; vec3 w=p-B.xyz;
+  float reach=sl+uBG[k].z; if(dot(w,w)>reach*reach) return 2.; // too far to touch in this step
+  vec3 ax=uBA[k].xyz;
+  float a=dot(sd,sd), b=dot(sd,ax), c=dot(ax,ax), d=dot(sd,w), e=dot(ax,w), den=a*c-b*b;
+  float s=den>1e-7 ? clamp((b*e-c*d)/den,0.,1.) : clamp(-d/a,0.,1.);
+  float u=c>1e-8 ? clamp((b*s+e)/c,-1.,1.) : 0.;
+  s=clamp((b*u-d)/a,0.,1.);
+  vec3 dv=w+s*sd-u*ax; float d2=dot(dv,dv), R2=B.w*B.w;
+  if(d2>=R2) return 2.;
+  return max(s-sqrt((R2-d2)/a),0.);
+}
+
+vec3 shadeBody(int k,vec3 x,vec3 rd,vec3 p){
+  vec4 B=uB[k]; vec3 ax=uBA[k].xyz; float kind=uBA[k].w, seed=uBG[k].y;
+  float g=shift(x,p,uBV[k].xyz);
+  float c2=dot(ax,ax), u=c2>1e-8 ? clamp(dot(x-B.xyz,ax)/c2,-1.,1.) : 0.;
+  vec3 n=normalize(x-(B.xyz+u*ax)), V=-rd, L=normalize(-B.xyz); // lit by the disk, from the hole's direction
+  float nl=max(dot(n,L),0.), mu=max(dot(n,V),0.), fres=pow(1.-mu,3.);
+  vec3 light=vec3(1.,.84,.62)*1.7, q=n*2.+seed*17., c;
+  if(kind<.5){ // meteor: cratered rock
+    float f=fbm3(q*2.2), cr=smoothstep(.56,.62,vnoise(q*3.+5.));
+    c=mix(vec3(.10,.085,.075),vec3(.38,.31,.26),f)*(1.-.5*cr)*(light*nl+.05);
+  } else if(kind<1.5){ // planet: oceans, land, cloud, ice caps, thin air
+    float f=fbm3(q*1.6), land=smoothstep(.5,.56,f), cl=smoothstep(.5,.68,fbm3(q*3.1+9.));
+    vec3 alb=mix(vec3(.03,.12,.32),mix(vec3(.11,.28,.09),vec3(.45,.36,.22),fbm3(q*4.)),land);
+    alb=mix(alb,vec3(.9),cl*.8); alb=mix(alb,vec3(.95),smoothstep(.8,.9,abs(n.y)));
+    c=alb*(light*nl+.03)+vec3(.25,.5,1.)*fres*(.2+nl)*.7;
+  } else if(kind<2.5){ // star: a black body at its shifted temperature
+    return bb(5800.*g)*min(pow(g,4.),60.)*(.4+.6*mu)*(.85+.3*fbm3(q*5.+uTime*.02))*5.;
+  } else if(kind<3.5){ // rocket hull
+    vec3 alb=mix(vec3(.82,.84,.86),vec3(.85,.12,.08),step(.5,u));
+    alb=mix(alb,vec3(.07,.1,.16),smoothstep(.06,.0,abs(u-.2)));
+    alb=mix(alb,vec3(.12),step(u,-.82));
+    c=alb*(light*nl+.07)+fres*.08;
+  } else { // engine flame
+    c=mix(vec3(1.,.45,.12),vec3(.6,.8,1.),mu*mu)*(1.2+4.5*mu*mu)*(.7+.3*sin(uTime*9.+u*7.));
+  }
+  return c*bb(6500.*g)*min(pow(g,4.),40.); // reflected light, shifted like the rest
+}
+
+// One ray, traced backward from the camera. ling: the angle it swept round the hole while close to the light orbits.
+vec3 trace(vec2 uv,out float ling){
+  ling=0.;
+  vec3 d=normalize(vec3(uv,uFocal));
+  vec4 k=uTet[0]-d.x*uTet[1]-d.y*uTet[2]-d.z*uTet[3]; // the photon arriving from that direction, as a four-vector
+  vec3 l; float f=kfl(uCam,l), s0=f*(k.w+dot(l,k.xyz));
+  vec3 p=k.xyz+s0*l; float sc=1./length(p); p*=sc; gPt=(s0-k.w)*sc; gW=sc;
+  if(gPt>-1e-5) return vec3(0); // no light from outside arrives with zero or negative energy
+  if(uProbe>1.5 && uProbe<2.5) return vec3(gW/(-gPt)); // test only: the frequency shift against far away
+  vec3 x=uCam, col=vec3(0), dx, dp, ex=vec3(0), vX=vec3(0), vP=vec3(0); float tr=1., order=0., rp=-1., T=0., dt, vW=0., vT=0., vG=0.; bool open=false;
+  for(int i=0;i<${STEPS};i++){
+    float r=ksr(x);
+    // Inside the innermost light orbit and still heading in: it came from the hole. So did a ray whose momentum is
+    // running away, which is what tracing backward toward the horizon looks like in these coordinates.
+    if(r<rp && (r<uRcap || (r<1.6*uRh && dot(p,p)>3e3))) break;
+    deriv(x,p,dx,dp,dt);
+    if(r>uEsc && dot(x,dx)<0.){ open=true; ex=dx; break; }
+    float ds=min(r>uRh ? max(uStep.x,uStep.y*(r-.75*uRh)) : max(.004,uStep.z*r), max(.005,.3*abs(r-uRh))); // finer close to the horizon, on both sides
+    float h=-ds/max(length(dx),1e-3), d2, d3, d4;
+    vec3 dx2,dp2,dx3,dp3,dx4,dp4; // fourth-order Runge-Kutta
+    deriv(x+.5*h*dx,p+.5*h*dp,dx2,dp2,d2);
+    deriv(x+.5*h*dx2,p+.5*h*dp2,dx3,dp3,d3);
+    deriv(x+h*dx3,p+h*dp3,dx4,dp4,d4);
+    vec3 xn=x+h/6.*(dx+2.*dx2+2.*dx3+dx4), pn=p+h/6.*(dp+2.*dp2+2.*dp3+dp4), sd=xn-x;
+    float Tn=T-h*dt, sl=length(sd), tb=2.; int bk=-1;
+    if(r<uRing) ling+=length(cross(x,xn))/(length(x)*length(xn)); // angle swept round the hole while close in
+    if(uProbe<.5 && uNB>0){
+      for(int j=0;j<6;j++){ if(j>=uNB) break; float t=hitBody(j,x,sd,sl); if(t<tb){ tb=t; bk=j; } } }
+    if(x.y*xn.y<0. && uProbe<.5){
+      float td=x.y/(x.y-xn.y);
+      if(td<tb){ vec3 xc=mix(x,xn,td); float rr=dot(xc.xz,xc.xz)-uA*uA;
+        if(rr>uRin*uRin && rr<ROUT*ROUT){
+          vec4 dk=disk(xc,mix(p,pn,td),order,mix(T,Tn,td));
+          col+=tr*dk.rgb*dk.a; tr*=1.-dk.a; order+=1.;
+          if(tr<.004) break; } }
+    }
+    if(bk>=0){ col+=tr*shadeBody(bk,mix(x,xn,tb),sd/sl,p); break; }
+    if(uVol>.5){ // glowing debris and the aiming guide, kept in a small 3D grid: gathered here, coloured once after the loop
+      vec3 xm=.5*(x+xn), q=xm/vec3(28.8,12.,28.8)+.5;
+      vec4 A=textureLod(uVolA,clamp(q,0.,1.),0.)*step(abs(q.x-.5),.5)*step(abs(q.y-.5),.5)*step(abs(q.z-.5),.5);
+      float w=tr*A.g*sl; vW+=w; vT+=w*A.r; vX+=w*xm; vP+=w*p; vG+=tr*A.b*sl;
+      tr*=1.-min(.6,A.g*sl*.8); }
+    rp=r; x=xn; p=pn; T=Tn;
+  }
+  if(uProbe>2.5) return open?normalize(-ex)*.5+.5:vec3(0.); // test only: the direction on the sky this ray came from
+  if(uProbe>.5) return vec3(open?1.:0.); // test only: escaped or captured
+  if(vW>1e-4){ // debris: a black body at its temperature, shifted by its motion, the hole and the camera
+    vec3 xm=vX/vW; float g=shift(xm,vP/vW,textureLod(uVolB,xm/vec3(28.8,12.,28.8)+.5,0.).rgb*2.-1.);
+    col+=bb((1800.+9000.*vT/vW)*g)*min(pow(g,4.),40.)*vW*7.; }
+  col+=vec3(.25,.6,1.)*vG*3.;
+  if(open) col+=tr*sky(normalize(-ex),mix(1.,gW/(-gPt),uDop));
+  return min(col,vec3(4000.));
+}
+
+void main(){
+  vec2 uv=(gl_FragCoord.xy-.5*uRes)/uRes.y; float px=1./uRes.y, ling, n=0.; vec3 col=vec3(0);
+  // Rings of light that circled the hole are thinner than a pixel. A ray that went more than half way round
+  // marks such a pixel, and it is averaged over five rays so the rings do not sparkle.
+  for(int k=0;k<5;k++){ col+=trace(uv+OFF[k]*px,ling); n+=1.; if(k==0 && (uProbe>.5 || ling<uLing)) break; }
+  col/=n;
+  if(uProbe<.5 && uEnc>.5) col=col/(1.+col);
+  o=vec4(col,1.);
+}`;
+
+const DOWN=`#version 300 es
+precision highp float; uniform sampler2D uTex; uniform vec2 uTexel; uniform float uFirst,uEnc; out vec4 o;
+vec3 S(vec2 uv){ vec3 c=texture(uTex,uv).rgb; if(uEnc>.5) c=c/max(1.-c,.02); return c; }
+void main(){ vec2 uv=gl_FragCoord.xy*uTexel*2.; // uTexel = texel of source, twice the size of this target
+  vec3 c=S(uv)*4.;
+  c+=S(uv+uTexel*vec2(-1,-1))+S(uv+uTexel*vec2(1,-1))+S(uv+uTexel*vec2(-1,1))+S(uv+uTexel*vec2(1,1));
+  c+=(S(uv+uTexel*vec2(-2,0))+S(uv+uTexel*vec2(2,0))+S(uv+uTexel*vec2(0,-2))+S(uv+uTexel*vec2(0,2)))*.5;
+  c/=10.;
+  if(uFirst>.5){ float l=max(c.r,max(c.g,c.b)); c*=smoothstep(.55,2.2,l); c=min(c,vec3(40.)); }
+  if(uEnc>.5) c=c/(1.+c);
+  o=vec4(c,1.); }`;
+
+const UP=`#version 300 es
+precision highp float; uniform sampler2D uTex,uAdd; uniform vec2 uTexel,uOut; uniform float uEnc; out vec4 o;
+vec3 D(vec3 c){ return uEnc>.5 ? c/max(1.-c,.02) : c; }
+void main(){ vec2 uv=gl_FragCoord.xy/uOut; vec2 t=uTexel;
+  vec3 c=D(texture(uTex,uv).rgb)*4.;
+  c+=(D(texture(uTex,uv+vec2(t.x,0)).rgb)+D(texture(uTex,uv-vec2(t.x,0)).rgb)+D(texture(uTex,uv+vec2(0,t.y)).rgb)+D(texture(uTex,uv-vec2(0,t.y)).rgb))*2.;
+  c+=D(texture(uTex,uv+t).rgb)+D(texture(uTex,uv-t).rgb)+D(texture(uTex,uv+vec2(t.x,-t.y)).rgb)+D(texture(uTex,uv+vec2(-t.x,t.y)).rgb);
+  c/=16.;
+  c=c*.92+D(texture(uAdd,uv).rgb);
+  if(uEnc>.5) c=c/(1.+c);
+  o=vec4(c,1.); }`;
+
+const FINAL=`#version 300 es
+precision highp float; uniform sampler2D uScene,uBloom,uLow; uniform vec2 uOut; uniform float uTime,uEnc,uFade,uAuto; out vec4 o;
+vec3 D(vec3 c){ return uEnc>.5 ? c/max(1.-c,.02) : c; }
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.); }
+float hash(vec2 p){ vec3 q=fract(vec3(p.xyx)*.1031); q+=dot(q,q.yzx+33.33); return fract((q.x+q.y)*q.z); }
+void main(){ vec2 uv=gl_FragCoord.xy/uOut;
+  vec3 c=D(texture(uScene,uv).rgb);
+  vec3 b=D(texture(uBloom,uv).rgb);
+  c=c+b*.085;
+  // while riding, the exposure closes down when the view is full of bright gas, as an eye would
+  float m=0.; for(int i=0;i<4;i++){ vec3 l=D(texture(uLow,vec2(.3+.4*float(i&1),.3+.4*float(i>>1))).rgb); m+=max(l.r,max(l.g,l.b))*.25; }
+  c*=mix(1.,1./(1.+3.*m),uAuto);
+  vec2 q=uv-.5; c*=1.-.55*dot(q,q)*1.6;
+  c=aces(c*1.15*uFade);
+  c=pow(c,vec3(1./2.2));
+  c+=(hash(gl_FragCoord.xy+fract(uTime)*311.)-.5)*.022;
+  o=vec4(c,1.); }`;
+
+function sh(type,src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+function prog(fs,vs){ const p=gl.createProgram(); gl.attachShader(p,sh(gl.VERTEX_SHADER,vs||VS)); gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u={}, n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS);
+  for(let i=0;i<n;i++){ const a=gl.getActiveUniform(p,i); u[a.name]=gl.getUniformLocation(p,a.name); }
+  return {p,u}; }
+
+let P; const tc=performance.now();
+try{ P={scene:prog(SCENE),down:prog(DOWN),up:prog(UP),fin:prog(FINAL)}; }
+catch(e){ console.error(e); $('fallback').style.display='grid'; return; }
+const vaoQuad=gl.createVertexArray(); gl.bindVertexArray(vaoQuad);
+// 32 x 32 x 32 random values for the shader's noise, from a fixed seed so every visit looks the same
+const noiseTex=gl.createTexture();
+{ const n=new Uint8Array(32768); let x=20261117; for(let i=0;i<n.length;i++){ x=(Math.imul(x,1664525)+1013904223)>>>0; n[i]=x>>>24; }
+  gl.bindTexture(gl.TEXTURE_3D,noiseTex); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+  gl.texImage3D(gl.TEXTURE_3D,0,gl.R8,32,32,32,0,gl.RED,gl.UNSIGNED_BYTE,n);
+  for(const w of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T,gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D,w,gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MAG_FILTER,gl.LINEAR); }
+
+// a 96 x 40 x 96 grid around the hole for glowing debris and the aiming guide: 28.8 x 12 x 28.8 r_s
+const VX=96, VY=40, VZ=96, VN=VX*VY*VZ, volA=new Uint8Array(VN*4), volB=new Uint8Array(VN*4);
+const vDen=new Float32Array(VN), vTem=new Float32Array(VN), vGui=new Float32Array(VN), vVx=new Float32Array(VN), vVy=new Float32Array(VN), vVz=new Float32Array(VN);
+volB.fill(127);
+const volTex=[volA,volB].map(buf=>{ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_3D,t);
+  gl.texImage3D(gl.TEXTURE_3D,0,gl.RGBA8,VX,VY,VZ,0,gl.RGBA,gl.UNSIGNED_BYTE,buf);
+  for(const w of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T,gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D,w,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MAG_FILTER,gl.LINEAR); return t; });
+// The real sky: every catalogue star brighter than magnitude 6.5, drawn once into a 4096 x 2048 map of the whole
+// sky (longitude by latitude in the scene's axes), which the ray tracer looks up where each ray ends.
+const starTex=gl.createTexture();
+{ const SW=4096, SH=2048, px=new Uint8Array(SW*SH*4), raw=atob(STARS), R=SKY_ROT, n=raw.length/6, clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+  const bbJS=T=>{ const t=clamp(T,1000,40000)/100; // the shader's black-body colour
+    const r=t<=66?1:1.292936*Math.pow(t-60,-.1332047), g=t<=66?.3900816*Math.log(t)-.6318414:1.1298909*Math.pow(t-60,-.0755148), b=t>=66?1:(t<=19?0:.5432068*Math.log(t-10)-1.1962541);
+    return [r,g,b].map(c=>Math.pow(clamp(c,0,1),2.2)); };
+  for(let i=0;i<n;i++){ const o=i*6, c=k=>raw.charCodeAt(o+k);
+    const ra=(c(0)*256+c(1))/65535*2*Math.PI, dec=(c(2)*256+c(3))/65535*Math.PI-Math.PI/2, mag=c(4)/25-2, bv=c(5)/100-.5;
+    const e=[Math.cos(dec)*Math.cos(ra),Math.cos(dec)*Math.sin(ra),Math.sin(dec)], d=[0,1,2].map(j=>R[j*3]*e[0]+R[j*3+1]*e[1]+R[j*3+2]*e[2]);
+    const T=4600*(1/(.92*bv+1.7)+1/(.92*bv+.62)), col=bbJS(T), I=9*Math.pow(10,-.4*mag)/40; // temperature from colour (Ballesteros 2012); brightness from magnitude
+    const fx=(Math.atan2(d[2],d[0])/(2*Math.PI)+.5)*SW, fy=(Math.asin(clamp(d[1],-1,1))/Math.PI+.5)*SH, wide=Math.min(8,1/Math.max(.05,Math.sqrt(1-d[1]*d[1]))), kx=Math.ceil(2*wide);
+    for(let dy=-2;dy<=2;dy++) for(let dx=-kx;dx<=kx;dx++){ const X=Math.floor(fx)+dx, Y=Math.floor(fy)+dy; if(Y<0||Y>=SH) continue;
+      const ux=(X+.5-fx)/wide, uy=Y+.5-fy, w=Math.exp(-(ux*ux+uy*uy)/1.1), q=(((X%SW)+SW)%SW+Y*SW)*4;
+      for(let k=0;k<3;k++){ const v=Math.sqrt(Math.min(1,col[k]*I*w))*255; if(v>px[q+k]) px[q+k]=v; } }
+    if(mag<2.3){ const L=Math.round(9+9*(2.3-mag)); // the brightest stars get the four spikes a telescope's mirror supports give them
+      for(let t=-L;t<=L;t++){ if(!t) continue; const w=Math.pow(1-Math.abs(t)/(L+1),2.2)*.3;
+        for(const [X,Y] of [[Math.floor(fx+t*wide),Math.floor(fy)],[Math.floor(fx),Math.floor(fy)+t]]){ if(Y<0||Y>=SH) continue; const q=(((X%SW)+SW)%SW+Y*SW)*4;
+          for(let k=0;k<3;k++){ const v=Math.sqrt(Math.min(1,col[k]*I*w))*255; if(v>px[q+k]) px[q+k]=v; } } } } }
+  gl.bindTexture(gl.TEXTURE_2D,starTex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,SW,SH,0,gl.RGBA,gl.UNSIGNED_BYTE,px);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); }
+// Telescope images of nebulae, one layer each, loaded after the first frames so the page starts at once.
+const NEB_N=NEBULAE.length, NEB_S=Math.min(1536,gl.getParameter(gl.MAX_TEXTURE_SIZE)), nebTex=gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebTex); gl.texStorage3D(gl.TEXTURE_2D_ARRAY,Math.floor(Math.log2(NEB_S))+1,gl.RGBA8,NEB_S,NEB_S,NEB_N);
+gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+const nebC=new Float32Array(48), nebR=new Float32Array(48), nebU=new Float32Array(48), nebG=new Float32Array(48); let nebLoaded=0, nebOn=0;
+NEBULAE.forEach((n,i)=>{ // where it is, and which way up, from the coordinates published with the image
+  const d2r=Math.PI/180, ra=n.ra*d2r, dec=n.dec*d2r, X=n.north*d2r, R=SKY_ROT, rot=e=>[0,1,2].map(j=>R[j*3]*e[0]+R[j*3+1]*e[1]+R[j*3+2]*e[2]);
+  const c=rot([Math.cos(dec)*Math.cos(ra),Math.cos(dec)*Math.sin(ra),Math.sin(dec)]), N=rot([-Math.sin(dec)*Math.cos(ra),-Math.sin(dec)*Math.sin(ra),Math.cos(dec)]), E=rot([-Math.sin(ra),Math.cos(ra),0]);
+  const up=[0,1,2].map(j=>N[j]*Math.cos(X)-E[j]*Math.sin(X)), right=[0,1,2].map(j=>-E[j]*Math.cos(X)-N[j]*Math.sin(X)); // east is to the left on the sky
+  const tw=Math.tan(n.half*d2r), th=tw*n.fov[1]/n.fov[0];
+  nebC.set([c[0],c[1],c[2],Math.cos(Math.atan(Math.hypot(tw,th)))],i*4); nebR.set([right[0],right[1],right[2],1/tw],i*4); nebU.set([up[0],up[1],up[2],1/th],i*4);
+  nebG.set([1.5,Math.log2(NEB_S/(2*tw)),1,0],i*4); n.dir=c;
+  setTimeout(()=>{ const img=new Image(); img.onload=()=>{ const cv=document.createElement('canvas'); cv.width=cv.height=NEB_S; cv.getContext('2d').drawImage(img,0,0,NEB_S,NEB_S);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebTex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY,0,0,0,i,NEB_S,NEB_S,1,gl.RGBA,gl.UNSIGNED_BYTE,cv); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+      if(++nebLoaded===NEB_N) gl.generateMipmap(gl.TEXTURE_2D_ARRAY); }; img.src=NEBULA_IMG[i]; },900+250*i);
+});
+const compileMs=Math.round(performance.now()-tc);
+
+/* ---------- render targets ---------- */
+function target(w,h){
+  const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  if(hdr) gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,w,h,0,gl.RGBA,gl.HALF_FLOAT,null);
+  else gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  const f=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+  return {t,f,w,h};
+}
+function free(T){ if(T){ gl.deleteTexture(T.t); gl.deleteFramebuffer(T.f); } }
+const LEVELS=6;
+let scene=null, downs=[], ups=[], scale=1, W=0, H=0, cssW=0, cssH=0, dpr=1;
+function build(){
+  dpr=Math.min(window.devicePixelRatio||1,1.5);
+  cssW=window.innerWidth; cssH=window.innerHeight;
+  canvas.width=Math.max(2,Math.round(cssW*dpr)); canvas.height=Math.max(2,Math.round(cssH*dpr));
+  guide.width=Math.round(cssW*dpr); guide.height=Math.round(cssH*dpr);
+  W=Math.max(2,Math.round(canvas.width*scale)); H=Math.max(2,Math.round(canvas.height*scale));
+  free(scene); downs.forEach(free); ups.forEach(free); downs=[]; ups=[];
+  scene=target(W,H);
+  let w=W,h=H;
+  for(let i=0;i<LEVELS;i++){ w=Math.max(2,w>>1); h=Math.max(2,h>>1); downs.push(target(w,h)); }
+  for(let i=0;i<LEVELS-1;i++){ ups.push(target(downs[i].w,downs[i].h)); }
+}
+build();
+let resizeT=0; window.addEventListener('resize',()=>{ clearTimeout(resizeT); resizeT=setTimeout(()=>{ cap=1; build(); },80); });
+
+/* ---------- state ---------- */
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const S={ az:.9, el:.14, dist:reduce?30:36, tAz:.9, tEl:.14, tDist:30, spin:.9, look:false, ly:0, lp:0, lz:1,
+          focal:1.7, grav:reduce?1:0, tGrav:1, dop:1, tDop:1, pred:0, tPred:0, fade:reduce?1:0, time:0, touched:false };
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const cross3=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const unit3=a=>{ const l=Math.hypot(a[0],a[1],a[2])||1; return a.map(x=>x/l); };
+const rnd=(a,b)=>a+Math.random()*(b-a);
+// the hole: mass scaled by the gravity switch, spin as a fraction of the most a hole of that mass can have
+function setHole(){ K.M=.5*Math.max(S.grav,1e-4); K.a=S.spin*K.M; }
+let RIN=3, RPH=1.5; const flux=new Float32Array(32);
+function setSpin(s){ // things that depend on the spin alone, worked out at full gravity
+  S.spin=s; K.M=.5; K.a=s*.5; RIN=kisco(); RPH=2*K.M*(1+Math.cos(2/3*Math.acos(s)));
+  let mx=0; for(let i=0;i<32;i++){ const q=i/31; flux[i]=kflux(RIN+(ROUT-RIN)*q*q); mx=Math.max(mx,flux[i]); }
+  // brightness scale: the same at 4.78 r_s for every spin (where a hole without spin is brightest), so spin shows as a hotter inner disk
+  mx=kflux(4.776); for(let i=0;i<32;i++) flux[i]/=mx;
+  for(const b of bodies.concat(bits)) rebase(b);
+  if(ride) rebase(ride.b);
+  setHole(); clearTimeout(checkT); checkT=setTimeout(selfCheck,250);
+}
+let checkT=0;
+
+/* ---------- input ---------- */
+let dragging=false, lx=0, ly=0, lastInput=-1e9;
+let downX=0, downY=0, downT=0, moved=false, aim=null, holdT=0, ride=null;
+canvas.addEventListener('pointerdown',e=>{ dragging=true; lx=downX=e.clientX; ly=downY=e.clientY; downT=performance.now(); moved=false; try{ canvas.setPointerCapture(e.pointerId); }catch(_){} canvas.classList.add('drag'); touch();
+  clearTimeout(holdT); if(ride) return; if(e.shiftKey) startAim(); else holdT=setTimeout(()=>{ if(dragging&&!moved&&!ride) startAim(); },300); });
+canvas.addEventListener('pointermove',e=>{ if(!dragging) return;
+  if(aim){ aim.x=e.clientX; aim.y=e.clientY; return; }
+  if(Math.hypot(e.clientX-downX,e.clientY-downY)>5){ moved=true; clearTimeout(holdT); }
+  if(ride){ const k=.0022/ride.zoom; ride.yaw-=(e.clientX-lx)*k; ride.pitch=clamp(ride.pitch+(e.clientY-ly)*k,-1.45,1.45); lx=e.clientX; ly=e.clientY; return; } // riding: look around
+  if(S.look){ lookTo=null; const k=.0027/(S.focal*S.lz); S.ly-=(e.clientX-lx)*k; S.lp=clamp(S.lp+(e.clientY-ly)*k,-1.5,1.5); lx=e.clientX; ly=e.clientY; lastInput=performance.now(); return; } // looking around: turn the camera where it stands
+  S.tAz-=(e.clientX-lx)*.0052; S.tEl=clamp(S.tEl+(e.clientY-ly)*.0042,-1.45,1.45); lx=e.clientX; ly=e.clientY; lastInput=performance.now(); });
+const end=()=>{ dragging=false; aim=null; clearTimeout(holdT); canvas.classList.remove('drag','aim'); };
+canvas.addEventListener('pointerup',e=>{ const a=aim, click=dragging&&!moved&&performance.now()-downT<500; end();
+  if(ride) return;
+  if(a && Math.hypot(a.x-a.x0,a.y-a.y0)>=8) fire(a); else if(a||click) launch(downX,downY); });
+canvas.addEventListener('pointercancel',end);
+canvas.addEventListener('wheel',e=>{ e.preventDefault(); if(ride){ ride.zoom=clamp(ride.zoom*Math.exp(-e.deltaY*.0011),.35,2.2); return; } if(S.look){ if(lookTo) lookTo[2]=clamp(lookTo[2]*Math.exp(-e.deltaY*.0011),.4,10); S.lz=clamp(S.lz*Math.exp(-e.deltaY*.0011),.4,10); touch(); return; } S.tDist=clamp(S.tDist*Math.exp(e.deltaY*.0011),3,600); lastInput=performance.now(); touch(); },{passive:false});
+function touch(){ if(!S.touched){ S.touched=true; $('hint').classList.add('gone'); } lastInput=performance.now(); }
+
+function toggle(btn,fn){ const on=btn.getAttribute('aria-pressed')!=='true'; btn.setAttribute('aria-pressed',on); fn(on); touch(); }
+$('bG').onclick=()=>toggle($('bG'),on=>{ S.tGrav=on?1:0; if(!on&&ride) ride.leave=true; });
+$('bR').onclick=()=>{ if(ride) ride.leave=true; else startRide(); };
+$('bD').onclick=()=>toggle($('bD'),on=>S.tDop=on?1:0);
+$('bP').onclick=()=>toggle($('bP'),on=>S.tPred=on?1:0);
+$('bS').onclick=()=>toggle($('bS'),on=>sound(on));
+$('bN').onclick=()=>toggle($('bN'),on=>document.body.classList.toggle('readout',on));
+let nebI=-1, lookTo=null; const CREDIT0=$('credit').textContent;
+function baseView(){ const el=Math.abs(S.el)<.012?(S.el<0?-.012:.012):S.el, ce=Math.cos(el), f=[-ce*Math.cos(S.az),-Math.sin(el),-ce*Math.sin(S.az)], r=unit3([-f[2],0,f[0]]); return {f,r,u:cross3(r,f)}; }
+$('bT').onclick=()=>{ if(ride) return; if(!S.look) $('bL').click(); nebI=(nebI+1)%NEBULAE.length; const n=NEBULAE[nebI], B=baseView();
+  lookTo=[Math.atan2(kdot(n.dir,B.r),kdot(n.dir,B.f)),Math.asin(clamp(kdot(n.dir,B.u),-1,1)),1.25]; note(n.name,6); touch(); };
+$('bL').onclick=()=>toggle($('bL'),on=>{ S.look=on; lookTo=null; if(on) note('Drag to look around  ·  Scroll to zoom the telescope  ·  L to return',7); else note(''); });
+$('spin').oninput=e=>{ setSpin(+e.target.value); $('spinV').textContent=(+e.target.value).toFixed(2); touch(); };
+const controls=$('controls');
+$('bC').onclick=()=>{ const o=!controls.classList.contains('open'); controls.classList.toggle('open',o); $('bC').setAttribute('aria-expanded',o); };
+let launchSel='any', launchN=0;
+document.querySelectorAll('[data-launch]').forEach(b=>b.onclick=()=>{ launchSel=b.dataset.launch;
+  document.querySelectorAll('[data-launch]').forEach(x=>x.setAttribute('aria-pressed',x===b)); });
+$('bX').onclick=()=>{ bodies.length=0; bits.length=0; };
+const panel=$('panel');
+function openPanel(o){ panel.classList.toggle('open',o); $('bH').setAttribute('aria-expanded',o); if(o) $('close').focus(); else $('bH').focus(); }
+$('bH').onclick=()=>openPanel(!panel.classList.contains('open'));
+$('close').onclick=()=>openPanel(false);
+window.addEventListener('keydown',e=>{
+  if(e.metaKey||e.ctrlKey||e.altKey||e.target===$('spin')) return;
+  const k=e.key.toLowerCase();
+  if(k==='g') $('bG').click(); else if(k==='d') $('bD').click(); else if(k==='p') $('bP').click();
+  else if(k==='s') $('bS').click(); else if(k==='x') $('bX').click(); else if(k==='l') $('bL').click(); else if(k==='n') $('bT').click(); else if(k==='r') $('bR').click(); else if(k==='escape'){ if(ride) ride.leave=true; else if(aim||dragging) end(); else if(panel.classList.contains('open')) openPanel(false); }
+});
+
+/* ---------- the same stepping rule in JavaScript, checked against exact values ---------- */
+// A ray coming in from far away in the disk's plane, passing at distance b: positive b goes round with the spin.
+function fromFar(b){ const D=300, x=[-D,0,b], dir=[1,0,0], l=[0,0,0], r=kfl(x,l), f=kf(x,r), ld=kdot(l,dir);
+  const A=f-1, B=2*f*ld, C=1+f*ld*ld, kt=(-B-Math.sqrt(B*B-4*A*C))/(2*A), p=[0,0,0]; let pt=klower(x,kt,dir,p);
+  const s=-1/pt; p[0]*=s; p[1]*=s; p[2]*=s; pt=-1; const rc=kcap(), rh=khor(); let prev=r;
+  for(let i=0;i<4000;i++){ const rr=kr(x); if(rr<rc && rr<prev) return true; if(rr>D+1) return false; prev=rr; kstep(x,p,pt,Math.max(.02,.1*(rr-.75*rh))); }
+  return true; }
+function selfCheck(){
+  const M0=K.M, a0=K.a; K.M=.5; K.a=S.spin*.5;
+  const crit=sg=>{ let lo=.6, hi=4.5; for(let i=0;i<30;i++){ const m=.5*(lo+hi); if(fromFar(sg*m)) lo=m; else hi=m; } return .5*(lo+hi); };
+  const exact=sg=>{ if(!K.a) return Math.sqrt(27)/2; const r=2*K.M*(1+Math.cos(2/3*Math.acos(-sg*S.spin))); return Math.abs((r*r*r-3*K.M*r*r+K.a*K.a*r+K.a*K.a*K.M)/(K.a*(r-K.M))); };
+  $('cB').textContent=crit(1).toFixed(4); $('cBx').textContent=exact(1).toFixed(4);
+  $('cD').textContent=crit(-1).toFixed(4); $('cDx').textContent=exact(-1).toFixed(4);
+  K.M=M0; K.a=a0;
+}
+
+/* ---------- sound: a small generative drone, starts only on request ---------- */
+let AC=null, master=null, filt=null, oscs=[];
+function sound(on){
+  if(on&&!AC){
+    AC=new (window.AudioContext||window.webkitAudioContext)();
+    master=AC.createGain(); master.gain.value=0;
+    filt=AC.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=520; filt.Q.value=.7;
+    const delay=AC.createDelay(2), fb=AC.createGain(), wet=AC.createGain();
+    delay.delayTime.value=.47; fb.gain.value=.55; wet.gain.value=.5;
+    filt.connect(master); filt.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(master);
+    master.connect(AC.destination);
+    [[41.2,'sine',.5],[61.74,'sine',.3],[82.41,'triangle',.16],[123.47,'sine',.1],[164.81,'sine',.06],[246.94,'sine',.045],[329.63,'sine',.03],[493.88,'sine',.012]].forEach(([f,type,gain],i)=>{
+      const o=AC.createOscillator(), g=AC.createGain(), l=AC.createOscillator(), lg=AC.createGain();
+      o.type=type; o.frequency.value=f; g.gain.value=gain;
+      l.frequency.value=.03+.021*i; lg.gain.value=gain*.6; l.connect(lg); lg.connect(g.gain);
+      o.connect(g); g.connect(filt); o.start(); l.start(); oscs.push({o,f});
+    });
+    // disk hiss: filtered noise
+    const len=AC.sampleRate*2, buf=AC.createBuffer(1,len,AC.sampleRate), ch=buf.getChannelData(0);
+    for(let i=0;i<len;i++) ch[i]=Math.random()*2-1;
+    const ns=AC.createBufferSource(); ns.buffer=buf; ns.loop=true;
+    const nf=AC.createBiquadFilter(); nf.type='bandpass'; nf.frequency.value=900; nf.Q.value=.6;
+    const ng=AC.createGain(); ng.gain.value=.012; ns.connect(nf); nf.connect(ng); ng.connect(filt); ns.start();
+  }
+  if(!AC) return;
+  if(on) AC.resume();
+  master.gain.cancelScheduledValues(AC.currentTime);
+  master.gain.setTargetAtTime(on?.5:0,AC.currentTime,on?1.2:.25);
+}
+
+function soundTick(){
+  if(!AC||AC.state!=='running') return;
+  const C=camera(), near=clamp((60-C.D)/58,0,1);
+  filt.frequency.setTargetAtTime(520+2400*near*near*near,AC.currentTime,.3);
+  const clock=clamp(1/C.E[0][0],.06,1), bend=.35+.65*S.grav; // pitch falls with the camera's clock rate
+  oscs.forEach(x=>x.o.frequency.setTargetAtTime(x.f*clock*bend,AC.currentTime,.4));
+}
+
+/* ---------- camera ---------- */
+function orbitCamera(){
+  const el=Math.abs(S.el)<.012?(S.el<0?-.012:.012):S.el;
+  const ce=Math.cos(el), x=[S.dist*ce*Math.cos(S.az), S.dist*Math.sin(el), S.dist*ce*Math.sin(S.az)];
+  const f0=x.map(v=>-v/S.dist), r0=unit3([-f0[2],0,f0[0]]), u0=cross3(r0,f0);
+  // looking around: the camera stays where it is and turns, and the scroll wheel becomes a telescope's zoom
+  const cy=Math.cos(S.ly), sy=Math.sin(S.ly), cp=Math.cos(S.lp), sp=Math.sin(S.lp);
+  const f=[0,1,2].map(i=>cp*(cy*f0[i]+sy*r0[i])+sp*u0[i]), r=[0,1,2].map(i=>cy*r0[i]-sy*f0[i]), u=cross3(r,f);
+  return {x,r,u,f,focal:S.focal*S.lz};
+}
+// An observer's frame for a camera at x with four-velocity U, facing f with r to its right and u up. The frame is first
+// built from the local directions (toward the hole, along the spin axis), then turned, so turning the view is an exact rotation.
+function frameAt(x,U,r,u,f){
+  const D=Math.hypot(x[0],x[1],x[2]), f0=x.map(v=>-v/D); let u0=[-f0[0]*f0[1],1-f0[1]*f0[1],-f0[2]*f0[1]];
+  if(Math.hypot(u0[0],u0[1],u0[2])<.02) u0=[1-f0[0]*f0[0],-f0[1]*f0[0],-f0[2]*f0[0]];
+  u0=unit3(u0); const s=[cross3(f0,u0),u0,f0], E0=kframe(x,U,s), E=[E0[0]];
+  for(const w of [r,u,f]){ const c=s.map(q=>kdot(w,q)); E.push([0,1,2,3].map(m=>c[0]*E0[1][m]+c[1]*E0[2][m]+c[2]*E0[3][m])); }
+  return E;
+}
+function camera(){
+  if(ride) return rideCamera();
+  const C=orbitCamera(); C.D=S.dist; C.E=frameAt(C.x,khover(C.x),C.r,C.u,C.f); return C;
+}
+// where on screen (CSS pixels) the camera sees a photon with covariant momentum (pt, p); null if behind it
+function onScreen(C,pt,p){ const d=kseen(C.E,pt,p).d; if(d[2]<.05) return null;
+  return [cssW/2+C.focal*d[0]/d[2]*cssH, cssH/2-C.focal*d[1]/d[2]*cssH]; }
+// the ray behind a screen point, traced backward: stop(x) ends it early. Returns the last position, or null if the hole took it.
+function castRay(C,cx,cy,stop){
+  const d=unit3([(cx-cssW/2)/cssH,-(cy-cssH/2)/cssH,C.focal]), p=[0,0,0]; let pt=kphoton(C.x,C.E,d,p);
+  const s=1/Math.hypot(p[0],p[1],p[2]); p[0]*=s; p[1]*=s; p[2]*=s; pt*=s; if(pt>-1e-6) return null;
+  const x=C.x.slice(), rc=kcap(), rh=khor(), dd=new Float64Array(7); let prev=-1;
+  for(let i=0;i<600;i++){ const r=kr(x); if(r<rc && r<prev) return null; if(r>Math.max(40,C.D*1.4)) return x; prev=r;
+    kderiv(x,p,pt,dd); const h=-Math.max(.03,.1*(r-.75*rh))/Math.max(1e-3,Math.hypot(dd[0],dd[1],dd[2])), y=x.slice();
+    kstep(x,p,pt,h); if(stop(y,x)) return x; }
+  return x;
+}
+
+/* ---------- launched objects: free fall, drag from the disk, tides, and the delay of their light ---------- */
+/*<phys>*/
+const KINDS=['meteor','planet','star','rocket'], RADIUS=[.22,.55,.85,.13];
+// Tides: a body held together by its own gravity comes apart where the hole's pull across it beats that gravity,
+// at about (3 M_hole / 4 pi density)^(1/3). For a hole of 4.3 million Suns (r_s = 12.7 million km):
+const HOLE_KG=4.3e6*1.989e30, RS_M=2*6.674e-11*HOLE_KG/8.988e16, DENSITY=[0,5514,1408,0]; // kg per cubic metre: Earth, the Sun
+const TIDE=DENSITY.map(d=>d?Math.cbrt(3*HOLE_KG/(4*Math.PI*d))/RS_M:0); // in r_s. 0: a meteor or a rocket is held by the strength of its material
+const DRAG=[4,5,9,4,2.5];   // time for the disk to drag it to the gas speed, in r_s/c. Last entry: debris
+const NBITS=[0,210,340,0], SLAB=.35, INFLOW=.15, HEAT=70, MAXP=900;
+const bodies=[], bits=[], _d=new Float64Array(7);
+// coordinate velocity dx/dt of a body, and its time rate dt/dtau
+function velocity(b){ kderiv(b.x,b.p,b.pt,_d); return [_d[0]/_d[6],_d[1]/_d[6],_d[2]/_d[6]]; }
+function setVelocity(b,v){ const ut=kut(b.x,v); if(!ut) return false; b.pt=klower(b.x,ut,[v[0]*ut,v[1]*ut,v[2]*ut],b.p); return true; }
+function rebase(b){ const v=b.v0||velocity(b); setVelocity(b,v); } // after the hole changes: keep the velocity, renew the momentum
+// how long light takes from b to c, in far-away time: straight-line time, the first-order delay from the hole's
+// gravity, and the exact extra time light needs to climb away from just outside the horizon
+function delay(c,b){ const rc=kr(c), rb=kr(b), rh=khor(), d=Math.hypot(c[0]-b[0],c[1]-b[1],c[2]-b[2]), M2=2*K.M;
+  let T=d+M2*Math.min(3,Math.log((rc+rb+d)/Math.max(1e-9,rc+rb-d)));
+  if(rc>rb){ if(rb<=rh) return Infinity; T+=M2*Math.log((rc-rh)/(rb-rh)); }
+  return T; }
+function spawn(kind,x,v){
+  const b={kind,x,p:[0,0,0],pt:-1,age:0,seed:Math.random(),heat:0,dv:0,t:0};
+  if(!setVelocity(b,v)) setVelocity(b,[0,0,0]);
+  b.t=S.time-delay(camX,x); bodies.push(b);
+  const slots=()=>bodies.reduce((n,b)=>n+(b.kind===3?2:1),0);
+  while(slots()>6) bodies.shift();
+  return b;
+}
+function toss(kind,P,alt){ // a plain click: prograde with the disk, at a random fraction of the circular-orbit speed
+  const R=Math.hypot(P[0],P[1],P[2]), Rc=clamp(R,Math.max(4.5,TIDE[kind]+1.2),13), rh=P.map(x=>x/R), x=rh.map(v=>v*Rc);
+  let th=cross3([0,1,0],rh), tl=Math.hypot(th[0],th[1],th[2]);
+  if(tl<.2){ th=cross3(alt,rh); tl=Math.hypot(th[0],th[1],th[2]); }
+  const [kt,kr_]=[[rnd(.35,.75),rnd(.2,.6)],[rnd(.6,.95),rnd(0,.12)],[rnd(.7,.98),rnd(0,.15)],[rnd(1.25,1.5),rnd(.3,.6)]][kind];
+  const vc=komega(kr(x))*Rc;
+  return spawn(kind,x,[0,1,2].map(i=>th[i]/tl*kt*vc-rh[i]*kr_*vc));
+}
+// One thing, advanced by dtc of far-away time (or of its own time, for the rider) in n Runge-Kutta steps.
+function advance(b,dtc,n,tau){
+  const x=b.x; let r=kr(x); b.dv=0; const rmin=b.own?rideStop():khor()*1.0005;
+  for(let i=0;i<n;i++){
+    kderiv(x,b.p,b.pt,_d); const h=b.own?dtc/n:dtc/n/Math.max(_d[6],1e-6);
+    b.t+=kstep(x,b.p,b.pt,h);
+    r=kr(x); if(r<rmin) break;
+    // inside the disk the gas drags it toward the gas velocity: a circular orbit with a slow inward drift
+    const q2=x[0]*x[0]+x[2]*x[2]-K.a*K.a;
+    if(Math.abs(x[1])<SLAB && q2>RIN*RIN && q2<ROUT*ROUT){
+      const v=velocity(b), g=kgas(x), q=Math.sqrt(x[0]*x[0]+x[2]*x[2]), gs=Math.hypot(g[0],g[2]), k=1-Math.exp(-h/tau);
+      const dx=g[0]-INFLOW*gs*x[0]/q-v[0], dy=-v[1], dz=g[2]-INFLOW*gs*x[2]/q-v[2];
+      b.dv=Math.hypot(dx,dy,dz);
+      setVelocity(b,[v[0]+dx*k,v[1]+dy*k,v[2]+dz*k]);
+    }
+  }
+  return r;
+}
+// each thing is drawn where it was when the light now reaching the camera left it: step it up to that moment
+function catchUp(b,n,tau,most){ const want=S.time-delay(camX,b.x)-b.t; if(want>0) return advance(b,Math.min(want,most),n,tau); return kr(b.x); }
+function addBit(x,v,T,rad,lum,life){
+  const f={x,p:[0,0,0],pt:-1,T,rad,lum,life,age:0,hot:0,dv:0,t:S.time-delay(camX,x)}; if(!setVelocity(f,v)) return;
+  bits.push(f); if(bits.length>MAXP) bits.splice(0,bits.length-MAXP);
+}
+function shred(b){ // tides: the body becomes pieces that keep its velocity but start at different points across it
+  const R=RADIUS[b.kind], star=b.kind===2, v=velocity(b);
+  for(let i=0;i<NBITS[b.kind];i++){
+    let s; do{ s=[rnd(-1,1),rnd(-1,1),rnd(-1,1)]; }while(s[0]*s[0]+s[1]*s[1]+s[2]*s[2]>1);
+    const z=rnd(.55,1.9);
+    addBit(b.x.map((c,j)=>c+s[j]*R),v.slice(),star?5800*rnd(.8,1.25):rnd(2200,4200),(star?.15:.11)*z,(star?1:.85)/(z*z),rnd(170,320));
+    bits[bits.length-1].t=b.t;
+  }
+}
+function spark(b){ // disk gas heated where something ploughs through it
+  const R=RADIUS[b.kind], x=[b.x[0]+rnd(-R,R),b.x[1]*.4+rnd(-.08,.08),b.x[2]+rnd(-R,R)], g=kgas(x), z=rnd(.6,1.8);
+  addBit(x,[g[0],rnd(-.01,.01),g[2]],rnd(5500,9500),.08*z,.5/(z*z),rnd(25,60)); bits[bits.length-1].t=b.t;
+}
+function stepThings(dtc,dtReal){
+  const most=dtc*4+.5, rh=khor();
+  for(let j=bodies.length-1;j>=0;j--){ const b=bodies[j]; b.age+=dtReal;
+    const r=catchUp(b,4,DRAG[b.kind],most);
+    if(b.dv>.03){ b.heat+=b.dv*b.dv*dtc*HEAT; while(b.heat>1){ b.heat-=1; spark(b); } }
+    if(TIDE[b.kind] && r<TIDE[b.kind] && b.age>.6 && S.grav>.5){ shred(b); bodies.splice(j,1); continue; }
+    if(r<rh*1.004 || r>150 || b.age>300) bodies.splice(j,1);
+  }
+  for(let j=bits.length-1;j>=0;j--){ const f=bits[j]; f.age+=dtc;
+    const r=catchUp(f,2,DRAG[4],most);
+    f.hot=Math.max(f.hot*Math.exp(-dtc/14),Math.min(1,f.dv*2.5));
+    if(r<rh*1.02 || r>70 || f.age>f.life) bits.splice(j,1);
+  }
+}
+/*</phys>*/
+let camX=[30,0,0]; // where the camera is, for the delay of light
+// the point seen under the cursor, on the plane through the hole that faces the camera
+function pick(cx,cy,C){
+  const O=orbitCamera(), side=x=>kdot(x,O.f);
+  let P=castRay(C,cx,cy,(a,b)=>side(a)<0&&side(b)>=0);
+  if(!P || Math.abs(side(P))>1.5){ const x=(cx-cssW/2)/cssH, y=-(cy-cssH/2)/cssH, t=S.dist/S.focal; P=[0,1,2].map(i=>O.r[i]*x*t+O.u[i]*y*t); } // flat fallback
+  const R=Math.hypot(P[0],P[1],P[2])||1, Rc=clamp(R,2.2,40); return P.map(v=>v/R*Rc);
+}
+const nextKind=()=>KINDS.indexOf(launchSel==='any'?KINDS[launchN%4]:launchSel);
+function launch(cx,cy){ const C=camera(); toss(nextKind(),pick(cx,cy,C),C.f); launchN++; }
+
+/* ---------- aiming: hold, then drag to set direction and speed ---------- */
+const SPEED=.55; // a drag of this fraction of the window height means the speed of light
+function startAim(){ const C=camera(); aim={x0:downX,y0:downY,x:downX,y:downY,kind:nextKind(),P:pick(downX,downY,C)}; canvas.classList.add('aim'); }
+function aimVelocity(a,C){ // the drag as a speed measured by someone hovering at that spot, turned into a velocity
+  const dx=a.x-a.x0, dy=-(a.y-a.y0), len=Math.hypot(dx,dy), beta=Math.min(.97,len/(SPEED*cssH));
+  const w=len?unit3([0,1,2].map(i=>C.r[i]*dx+C.u[i]*dy)):C.r, U=khover(a.P), E=kframe(a.P,U,[w,C.f,cross3(w,C.f)]), g=1/Math.sqrt(1-beta*beta);
+  const u=[0,1,2,3].map(m=>g*(U[m]+beta*E[1][m]));
+  return {beta,v:[u[1]/u[0],u[2]/u[0],u[3]/u[0]]};
+}
+function fire(a){ spawn(a.kind,a.P.slice(),aimVelocity(a,camera()).v); launchN++; }
+// the path the launch would take, from the same stepper the live object uses
+function predict(kind,P,v){
+  const b={kind,x:P.slice(),p:[0,0,0],pt:-1,dv:0,t:0}, pts=[P.slice()]; setVelocity(b,v);
+  let fate='', rt=TIDE[kind]*(S.grav>.5?1:0);
+  for(let i=0;i<1500 && !fate;i++){
+    const r=advance(b,5.5/30,2,DRAG[kind]);
+    if(i%3===2) pts.push(b.x.slice());
+    if(rt && r<rt && i>18) fate='torn apart'; else if(r<khor()*1.03) fate='falls in'; else if(r>48) fate=-b.pt>=1?'escapes':'';
+    if(r>48) break;
+  }
+  pts.push(b.x.slice());
+  return {pts,fate};
+}
+function drawAim(){
+  if(!aim) return;
+  const C=camera(), {beta,v}=aimVelocity(aim,C), d=dpr, live=Math.hypot(aim.x-aim.x0,aim.y-aim.y0)>=8;
+  const x0=aim.x0*d, y0=aim.y0*d;
+  g2.lineWidth=1.25*d; g2.font=(11.5*d)+'px ui-monospace,Consolas,Menlo,monospace'; g2.textBaseline='middle';
+  // dashed ring: drag this far, sideways, for a circular orbit
+  const R=kr(aim.P), U=khover(aim.P), vc=kgas(aim.P), utc=kut(aim.P,vc);
+  if(U && utc && R>=RIN && S.grav>.5){ const gam=-kip(aim.P,U,[utc,vc[0]*utc,vc[1]*utc,vc[2]*utc]), rc=SPEED*cssH*d*Math.sqrt(1-1/(gam*gam));
+    g2.strokeStyle='rgba(244,236,221,.3)'; g2.setLineDash([3*d,5*d]); g2.beginPath(); g2.arc(x0,y0,rc,0,Math.PI*2); g2.stroke(); g2.setLineDash([]);
+    g2.fillStyle='rgba(244,236,221,.5)'; g2.fillText('orbit speed',x0+rc*.72+6*d,y0+rc*.72+6*d); }
+  g2.strokeStyle='#ffb469'; g2.beginPath(); g2.arc(x0,y0,7*d,0,Math.PI*2); g2.stroke();
+  if(!live){ g2.fillStyle='#ffb469'; g2.fillText('drag to set direction and speed',x0+16*d,y0); aim.path=null; return; }
+  const P=predict(aim.kind,aim.P,v); aim.path=P.pts; // the path is drawn by the ray tracer, so it is bent like everything else
+  const x1=aim.x*d, y1=aim.y*d, an=Math.atan2(y1-y0,x1-x0);
+  g2.strokeStyle='#ffb469'; g2.fillStyle='#ffb469';
+  g2.beginPath(); g2.moveTo(x0,y0); g2.lineTo(x1,y1); g2.stroke();
+  g2.beginPath(); g2.moveTo(x1,y1); g2.lineTo(x1-10*d*Math.cos(an-.4),y1-10*d*Math.sin(an-.4)); g2.lineTo(x1-10*d*Math.cos(an+.4),y1-10*d*Math.sin(an+.4)); g2.closePath(); g2.fill();
+  g2.fillText(KINDS[aim.kind]+'  '+beta.toFixed(2)+' c',x1+14*d,y1+14*d);
+  if(P.fate){ g2.fillStyle='#bfe6ff'; g2.fillText(P.fate,x1+14*d,y1+30*d); }
+}
+
+/* ---------- riding along: the camera falls with an object ---------- */
+let veil=1, noteT=0;
+function note(text,sec){ const n=$('note'); clearTimeout(noteT); n.textContent=text; n.classList.toggle('on',!!text); if(text&&sec) noteT=setTimeout(()=>n.classList.remove('on'),sec*1000); }
+// the ride stops between the two horizons: below the inner one the textbook solution stops describing a real hole
+function rideStop(){ return Math.max(.16,K.M-Math.sqrt(Math.max(0,K.M*K.M-K.a*K.a))+.12); }
+// the time a far-away clock shows differs from the page's time coordinate by this function of radius
+function farOffset(r){ const M=K.M, rp=khor(), rm=M-Math.sqrt(Math.max(0,M*M-K.a*K.a)); return M*Math.log(Math.abs((r-rp)*(r-rm)))+2*M*M/Math.max(1e-9,rp-rm)*Math.log(Math.abs((r-rp)/Math.max(1e-12,r-rm))); }
+function startRide(){
+  if(ride) return; end(); touch(); introDone=true; S.tGrav=1; S.grav=Math.max(S.grav,.999); setHole();
+  let b=bodies.pop(); // the camera takes the place of the last thing launched
+  if(!b){ // nothing launched: start on a path that crosses the disk and falls in
+    const C=orbitCamera(), P=[0,1,2].map(i=>C.r[i]*10.5+C.u[i]*2-C.f[i]*2), R=Math.hypot(P[0],P[1],P[2]), rh=P.map(x=>x/R);
+    const th=unit3(cross3([0,1,0],rh)), vc=komega(kr(P))*R;
+    b={x:P,p:[0,0,0],pt:-1,dv:0,t:0}; setVelocity(b,[0,1,2].map(i=>th[i]*.55*vc-rh[i]*.2*vc)); }
+  b.own=true; b.t=0;
+  ride={b,k:reduce?1:0,yaw:0,pitch:0,zoom:.62,tau:0,far:0,r0:kr(b.x),rate:1,leave:false,up:[0,1,0]};
+  $('bG').setAttribute('aria-pressed',true); $('bR').setAttribute('aria-pressed',true);
+  document.body.classList.add('riding'); note('Drag to look around  ·  Scroll to zoom  ·  Esc to leave',7);
+}
+function stopRide(text){ ride=null; veil=0; $('bR').setAttribute('aria-pressed',false); document.body.classList.remove('riding'); note(text||'',text?9:0); }
+function stepRide(dt){ // returns the far-away time to move the rest of the scene by
+  const b=ride.b, rh=khor(), stop=rideStop(); let r=kr(b.x);
+  ride.k=Math.min(1,ride.k+dt/1.8);
+  // playback slows as the fall speeds up, so the last part can be watched
+  ride.rate=clamp(.2*Math.pow(r/rh,r>rh?1.5:2.5),.004,5.5)/5.5;
+  const dtau=dt*5.5*ride.rate, t0=b.t;
+  r=advance(b,dtau,8,DRAG[0]); ride.tau+=dtau;
+  const dtc=b.t-t0; ride.far=r>rh?b.t-(farOffset(r)-farOffset(ride.r0)):Infinity;
+  if(ride.leave) veil-=dt/.3; else veil=Math.min(veil+dt/.6,clamp((r-stop)/.2,0,1));
+  if(r<=stop+1e-3) stopRide('The ride stops here, inside the hole. Seen from far away you never reached the horizon. You reddened and faded just outside it.');
+  else if(veil<=0 || r>70) stopRide();
+  return Math.min(dtc,dtau*3);
+}
+function rideCamera(){
+  const O=orbitCamera(), b=ride.b, k=ride.k*ride.k*(3-2*ride.k), x=b.x;
+  kderiv(x,b.p,b.pt,_d); const U=[_d[6],_d[0],_d[1],_d[2]];
+  // the rider's view: facing the middle of the hole's shadow as the rider sees it, found from the exact edge
+  // (the edge is a circle on the rider's sky; the sum of cross products of neighbouring points lies along its axis)
+  const D=Math.hypot(x[0],x[1],x[2]), rh=x.map(v=>v/D); let f0=rh.map(v=>-v), u0=[-f0[0]*f0[1],1-f0[1]*f0[1],-f0[2]*f0[1]];
+  if(Math.hypot(u0[0],u0[1],u0[2])<.02) u0=[1,0,0]; u0=unit3(u0); const s=[cross3(f0,u0),u0,f0], E0=kframe(x,U,s);
+  const ed=edgeLoop(x,10).map(e=>{ const q=kseen(E0,e.pt,e.p), w=[0,1,2].map(i=>q.d[0]*s[0][i]+q.d[1]*s[1][i]+q.d[2]*s[2][i]); w.g=q.om; return w; });
+  if(ed.length>4){ let ax=[0,0,0];
+    for(let i=0;i<ed.length;i++){ const c=cross3(ed[i],ed[(i+1)%ed.length]); ax=ax.map((v,j)=>v+c[j]); }
+    // of the two ends of the axis, the middle of the shadow is the one that follows on from the last frame (at first: the one toward the hole)
+    if(kdot(ax,ride.axis||f0)<0) ax=ax.map(v=>-v);
+    f0=unit3(ax); ride.axis=f0;
+    // once the shadow is too wide to fit, turn away from its middle to keep its edge in view,
+    // toward the side where the light is shifted up the most and the sky is brightest
+    const wide=Math.acos(clamp(kdot(f0,ed[0]),-1,1)), turn=window.__noTurn?0:Math.max(0,wide-.42);
+    if(turn>0){ let sd=cross3(f0,[0,1,0]).map(v=>v*1e-3);
+      for(const d of ed){ const q=kdot(d,f0), w=d.g*d.g; sd=sd.map((v,i)=>v+w*(d[i]-f0[i]*q)); }
+      sd=unit3(sd); f0=f0.map((v,i)=>Math.cos(turn)*v+Math.sin(turn)*sd[i]); } }
+  // up starts along the spin axis and is carried along from frame to frame, so the view never flips passing over a pole
+  const qu=kdot(ride.up,f0); let up=ride.up.map((v,i)=>v-f0[i]*qu);
+  if(Math.hypot(up[0],up[1],up[2])<.05) up=O.u.map((v,i)=>v-f0[i]*kdot(O.u,f0));
+  up=unit3(up); ride.up=up; const r0=cross3(f0,up);
+  const cy=Math.cos(ride.yaw), sy=Math.sin(ride.yaw), cp=Math.cos(ride.pitch), sp=Math.sin(ride.pitch);
+  const f=[0,1,2].map(i=>cp*(cy*f0[i]+sy*r0[i])+sp*up[i]), r=[0,1,2].map(i=>cy*r0[i]-sy*f0[i]), u=cross3(r,f);
+  if(k>=1) return {x:x.slice(),r,u,f,focal:ride.zoom,D,E:frameAt(x,U,r,u,f),riding:1};
+  // flying in: from the hovering camera to the rider, picking up its motion on the way
+  const a=O.x.map(v=>v/S.dist), ang=Math.acos(clamp(kdot(a,rh),-1,1)), sn=Math.sin(ang);
+  const dir=sn<1e-3?a:unit3(a.map((v,i)=>(Math.sin((1-k)*ang)*v+Math.sin(k*ang)*rh[i])/sn));
+  const Dc=Math.exp(Math.log(S.dist)*(1-k)+Math.log(D)*k), xc=dir.map(v=>v*Dc);
+  const fb=unit3(O.f.map((v,i)=>v+(f[i]-v)*k+1e-3*O.r[i])), um=O.u.map((v,i)=>v+(u[i]-v)*k), q=kdot(um,fb), ub=unit3(um.map((v,i)=>v-fb[i]*q));
+  const vv=[_d[0]/_d[6]*k,_d[1]/_d[6]*k,_d[2]/_d[6]*k], ut=kut(xc,vv)||kut(xc,[0,0,0]), ok=kut(xc,vv)>0;
+  return {x:xc,r:cross3(fb,ub),u:ub,f:fb,focal:O.focal+(ride.zoom-O.focal)*k,D:Dc,E:frameAt(xc,ok?[ut,vv[0]*ut,vv[1]*ut,vv[2]*ut]:[ut,0,0,0],cross3(fb,ub),ub,fb),riding:1};
+}
+// the exact shadow edge as a closed loop of photons
+function edgeLoop(x,n){ const e=kedge(x,n); return e.filter(q=>q.sg>0).concat(e.filter(q=>q.sg<0).reverse()); }
+function rideReadout(){
+  const b=ride.b, r=kr(b.x), U=khover(b.x);
+  $('hR').textContent=r.toFixed(2);
+  if(U){ kderiv(b.x,b.p,b.pt,_d); const g=-kip(b.x,U,[_d[6],_d[0],_d[1],_d[2]]); $('hV').textContent=Math.sqrt(Math.max(0,1-1/(g*g))).toFixed(2)+' c past a hoverer'; }
+  else $('hV').textContent='nothing can hover here';
+  $('hT').textContent=ride.tau.toFixed(1);
+  $('hTf').textContent=isFinite(ride.far)&&ride.far<1e5?ride.far.toFixed(ride.far<1000?1:0)+' rₛ/c':(r>khor()?'running away':'has no value in here');
+  $('hP').textContent=(ride.rate*100).toFixed(ride.rate<.1?1:0)+'% of normal';
+}
+
+/* ---------- frame ---------- */
+function pass(pr,T,w,h){ gl.bindFramebuffer(gl.FRAMEBUFFER,T?T.f:null); gl.viewport(0,0,w,h); gl.useProgram(pr.p); }
+function tex(unit,t,loc){ gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t); gl.uniform1i(loc,unit); }
+const enc=hdr?0:1;
+let last=performance.now(), acc=0, frames=0, slow=0, t0=0, introDone=reduce, cap=1, skip=2, nFrame=0, timed=false;
+window.__t={compileMs}; window.__S=S; window.__load=0;
+document.addEventListener('visibilitychange',()=>{ skip=3; slow=0; });
+const ease=(cur,to,rate,dt)=>cur+(to-cur)*(1-Math.exp(-rate*dt));
+
+const uB=new Float32Array(24), uBA=new Float32Array(24), uBG=new Float32Array(24), uBV=new Float32Array(24);
+function bodyUniforms(U){
+  let n=0;
+  const put=(c,R,ax,kind,b)=>{ kderiv(b.x,b.p,b.pt,_d); uB.set([c[0],c[1],c[2],R],n*4); uBA.set([ax[0],ax[1],ax[2],kind],n*4); uBG.set([1,b.seed,R+Math.hypot(ax[0],ax[1],ax[2]),0],n*4);
+    uBV.set([_d[0]/_d[6],_d[1]/_d[6],_d[2]/_d[6],_d[6]],n*4); n++; };
+  for(const b of bodies){ if(n>=6) break;
+    const k=Math.min(1,b.age/.4), sc=k*k*(3-2*k); // pops in
+    if(b.kind===3){ const d=unit3(velocity(b));
+      put(b.x,.16*sc,d.map(v=>v*.5*sc),3,b);
+      if(n<6) put(b.x.map((v,i)=>v-d[i]*.9*sc),.105*sc,d.map(v=>v*.25*sc),4,b);
+    } else { // tides stretch it along the line to the hole before it comes apart
+      const R=RADIUS[b.kind]*sc, rt=TIDE[b.kind], r=Math.hypot(b.x[0],b.x[1],b.x[2]), st=rt?clamp((1.18*rt-r)/(.18*rt),0,1)*S.grav:0;
+      put(b.x,R*(1-.28*st),b.x.map(v=>v/r*R*.85*st),b.kind,b);
+    }
+  }
+  gl.uniform1i(U.uNB,n); gl.uniform4fv(U['uB[0]'],uB); gl.uniform4fv(U['uBA[0]'],uBA); gl.uniform4fv(U['uBG[0]'],uBG); gl.uniform4fv(U['uBV[0]'],uBV);
+}
+// debris and the aiming guide go into the 3D grid the tracer reads
+let volOn=false, volDirty=[];
+function splat(x,den,tem,v,gui){
+  const fx=(x[0]/28.8+.5)*VX-.5, fy=(x[1]/12+.5)*VY-.5, fz=(x[2]/28.8+.5)*VZ-.5, ix=Math.floor(fx), iy=Math.floor(fy), iz=Math.floor(fz);
+  if(ix<0||iy<0||iz<0||ix>=VX-1||iy>=VY-1||iz>=VZ-1) return;
+  const tx=fx-ix, ty=fy-iy, tz=fz-iz;
+  for(let c=0;c<8;c++){ const a=c&1, b=(c>>1)&1, d=c>>2, w=(a?tx:1-tx)*(b?ty:1-ty)*(d?tz:1-tz), i=ix+a+VX*(iy+b+VY*(iz+d));
+    if(vDen[i]===0&&vGui[i]===0) volDirty.push(i);
+    vDen[i]+=den*w; vTem[i]+=den*w*tem; vGui[i]+=gui*w; if(v){ vVx[i]+=den*w*v[0]; vVy[i]+=den*w*v[1]; vVz[i]+=den*w*v[2]; } }
+}
+function fillVolume(){
+  const path=aim&&aim.path; if(!bits.length && !path){ if(volOn){ volOn=false; } return; }
+  for(const i of volDirty){ vDen[i]=vTem[i]=vGui[i]=vVx[i]=vVy[i]=vVz[i]=0; const o=i*4; volA[o]=volA[o+1]=volA[o+2]=volA[o+3]=0; volB[o]=volB[o+1]=volB[o+2]=127; }
+  volDirty=[];
+  const rh=khor();
+  for(const f of bits){ const v=velocity(f), near=clamp((kr(f.x)-rh)/(.3*rh),0,1), w=f.lum*clamp((f.life-f.age)/30,0,1)*(1+3*f.hot)*f.rad/.12*near*near; // fades as its light is stretched at the horizon
+    splat(f.x,w,(f.T+5200*f.hot-1800)/9000,v,0); }
+  if(path) for(let i=1;i<path.length;i++){ const a=path[i-1], b=path[i], n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])/.12));
+    for(let j=0;j<n;j++){ const t=j/n; splat([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t],0,0,null,.5*(1-.6*i/path.length)); } }
+  for(const i of volDirty){ const o=i*4, d=vDen[i];
+    volA[o]=d>0?clamp(vTem[i]/d,0,1)*255:0; volA[o+1]=Math.min(255,d*90); volA[o+2]=Math.min(255,vGui[i]*255); volA[o+3]=255;
+    if(d>0){ volB[o]=clamp(vVx[i]/d*.5+.5,0,1)*255; volB[o+1]=clamp(vVy[i]/d*.5+.5,0,1)*255; volB[o+2]=clamp(vVz[i]/d*.5+.5,0,1)*255; } }
+  gl.bindTexture(gl.TEXTURE_3D,volTex[0]); gl.texSubImage3D(gl.TEXTURE_3D,0,0,0,0,VX,VY,VZ,gl.RGBA,gl.UNSIGNED_BYTE,volA);
+  gl.bindTexture(gl.TEXTURE_3D,volTex[1]); gl.texSubImage3D(gl.TEXTURE_3D,0,0,0,0,VX,VY,VZ,gl.RGBA,gl.UNSIGNED_BYTE,volB);
+  volOn=true;
+}
+const tet=new Float32Array(16), STEP=[.08,.26,.03]; window.__STEP=STEP;
+function sceneUniforms(){
+  setHole(); const C=camera(); camX=C.x;
+  const U=P.scene.u; pass(P.scene,scene,W,H);
+  for(let i=0;i<4;i++){ tet[i*4]=C.E[i][1]; tet[i*4+1]=C.E[i][2]; tet[i*4+2]=C.E[i][3]; tet[i*4+3]=C.E[i][0]; }
+  gl.uniform2f(U.uRes,W,H); gl.uniform3fv(U.uCam,C.x); gl.uniformMatrix4fv(U.uTet,false,tet);
+  gl.uniform1f(U.uFocal,C.focal); gl.uniform1f(U.uTime,S.time); gl.uniform1f(U.uDop,S.dop);
+  gl.uniform1f(U.uM,K.M); gl.uniform1f(U.uA,K.a); gl.uniform1f(U.uRh,khor()); gl.uniform1f(U.uRcap,S.grav>.02?kcap():0);
+  gl.uniform1f(U.uRin,RIN); gl.uniform1f(U.uRing,RPH*1.25*S.grav); gl.uniform1fv(U['uFlux[0]'],flux);
+  gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_3D,noiseTex); gl.uniform1i(U.uNoise,3);
+  gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_3D,volTex[0]); gl.uniform1i(U.uVolA,4);
+  gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_3D,volTex[1]); gl.uniform1i(U.uVolB,5);
+  gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D,starTex); gl.uniform1i(U.uStars,6);
+  gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebTex); gl.uniform1i(U.uNeb,7);
+  gl.uniform4fv(U['uNebC[0]'],nebC); gl.uniform4fv(U['uNebR[0]'],nebR); gl.uniform4fv(U['uNebU[0]'],nebU); gl.uniform4fv(U['uNebG[0]'],nebG);
+  gl.uniform1f(U.uNebLod,-Math.log2(C.focal*H)); gl.uniform1f(U.uNebOn,nebOn);
+  gl.uniform3f(U.uStep,STEP[0],STEP[1],STEP[2]); gl.uniform1f(U.uLing,C.D>RPH*1.7?3.3:5.6); /* close in, every ray sweeps a wide angle, so only rays that go most of the way round count */ gl.uniform1f(U.uVol,volOn?1:0); gl.uniform1f(U.uEsc,Math.max(34,C.D*1.25)); gl.uniform1f(U.uEnc,enc);
+  bodyUniforms(U);
+  return C;
+}
+
+function frame(now){ requestAnimationFrame(frame); tick(now); }
+// test only: advance the page by a number of seconds without waiting for the browser to schedule frames
+window.__run=function(sec,fps){ fps=fps||60; let t=last; for(let i=0;i<sec*fps;i++){ t+=1000/fps; tick(t); } };
+function tick(now){
+  if(!t0){ t0=now; window.__t.first=Math.round(now); }
+  let dt=(now-last)/1000; if(dt<0) return; last=now; if(dt>.25) dt=.25;
+  const introT=(now-t0)/1000;
+  setHole();
+  let dtc=dt*5.5;
+  if(ride && !window.__freeze) dtc=stepRide(dt); else if(!ride) veil=Math.min(1,veil+dt/.6);
+  S.time+=dtc; if(!window.__freeze) stepThings(dtc,dt);
+  if(ride) rideReadout();
+  if(!reduce && !dragging && !S.look && now-lastInput>2500) S.tAz+=dt*.022;
+  if(!S.look){ S.ly=ease(S.ly,0,4,dt); S.lp=ease(S.lp,0,4,dt); S.lz=Math.exp(ease(Math.log(S.lz),0,4,dt)); }
+  else if(lookTo){ const dy=((lookTo[0]-S.ly+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI; // turn the short way round
+    S.ly+=dy*(1-Math.exp(-2.2*dt)); S.lp=ease(S.lp,lookTo[1],2.2,dt); S.lz=Math.exp(ease(Math.log(S.lz),Math.log(lookTo[2]),2.2,dt)); }
+  nebOn=nebLoaded===NEB_N?Math.min(1,nebOn+dt/2.5):0;
+  S.az=ease(S.az,S.tAz,7,dt); S.el=ease(S.el,S.tEl,7,dt);
+  S.dist=ease(S.dist,S.tDist,S.touched?5:.9,dt);
+  if(!window.__lockFocal){ const k=clamp((S.dist-3)/15,0,1); S.focal=.55+1.15*k*k*(3-2*k); } // the lens widens as you approach
+  // opens in flat space, then gravity switches on
+  if(!introDone && (S.touched || S.grav>.985)) introDone=true;
+  if(introDone) S.grav=ease(S.grav,S.tGrav,2.2,dt);
+  else if(introT>1.7) S.grav=Math.min(1,S.grav+dt/3.2*(.35+2.2*S.grav*(1-S.grav)+.3)); S.dop=ease(S.dop,S.tDop,3,dt); S.pred=ease(S.pred,S.tPred,5,dt);
+  S.fade=reduce?1:Math.min(1,introT/1.3);
+
+  drawGuide(); fillVolume();
+  sceneUniforms();
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  if(window.__t.firstDrawMs===undefined){ const q=performance.now(); gl.finish(); window.__t.firstDrawMs=Math.round(performance.now()-q); }
+  for(let i=0;i<window.__load;i++) gl.drawArrays(gl.TRIANGLES,0,3); // test only: emulates a slower GPU
+
+  let U=P.down.u, src=scene;
+  for(let i=0;i<LEVELS;i++){ const d=downs[i]; pass(P.down,d,d.w,d.h);
+    tex(0,src.t,U.uTex); gl.uniform2f(U.uTexel,1/src.w,1/src.h); gl.uniform1f(U.uFirst,i===0?1:0); gl.uniform1f(U.uEnc,enc);
+    gl.drawArrays(gl.TRIANGLES,0,3); src=d; }
+  U=P.up.u; let low=downs[LEVELS-1];
+  for(let i=LEVELS-2;i>=0;i--){ const d=ups[i]; pass(P.up,d,d.w,d.h);
+    tex(0,low.t,U.uTex); tex(1,downs[i].t,U.uAdd); gl.uniform2f(U.uTexel,1/low.w,1/low.h); gl.uniform2f(U.uOut,d.w,d.h); gl.uniform1f(U.uEnc,enc);
+    gl.drawArrays(gl.TRIANGLES,0,3); low=d; }
+  U=P.fin.u; pass(P.fin,null,canvas.width,canvas.height);
+  tex(0,scene.t,U.uScene); tex(1,ups[0].t,U.uBloom); gl.uniform2f(U.uOut,canvas.width,canvas.height);
+  gl.uniform1f(U.uTime,now/1000); gl.uniform1f(U.uEnc,enc); gl.uniform1f(U.uFade,S.fade*S.fade*veil*veil); tex(2,downs[LEVELS-1].t,U.uLow); gl.uniform1f(U.uAuto,ride?ride.k:0);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+
+  soundTick();
+  // pick the starting resolution from one timed pass, so slow machines never see a slow first second
+  if(!timed && ++nFrame===24){ timed=true; window.__bench(2); const ms=window.__bench(3).ms; window.__t.passMs=ms;
+    if(ms>8 && !window.__fix){ scale=clamp(Math.sqrt(6.5/ms),.33,1); build(); skip=2; } }
+
+  // readouts and adaptive resolution, a few times a second
+  acc+=dt; frames++;
+  if(acc>=.5){
+    const fps=frames/acc; acc=0; frames=0;
+    if(!ride){ const U=khover(camX); $('hR').textContent=S.dist.toFixed(1); $('hC').textContent=U?(1/U[0]).toFixed(3):'0'; }
+    $('hI').textContent=Math.round(S.el*180/Math.PI);
+    $('hQ').textContent=Math.round(scale*100); $('hF').textContent=Math.round(fps);
+    { const C=camera(); let best=null, bd=0; for(const n of NEBULAE){ const d=kdot(n.dir,C.f); if(d>bd){ bd=d; best=n; } }
+      const near=best && Math.acos(clamp(bd,-1,1))*180/Math.PI<best.half+4 && nebOn>.5;
+      const text=near?best.name+'. Image: '+best.credit:CREDIT0; if($('credit').textContent!==text) $('credit').textContent=text; }
+    if(window.__fix){} else if(skip>0) skip--;
+    else if(fps<48){ if(++slow>=2 && scale>.34){ cap=Math.max(.33,scale*.93); scale=Math.max(.33,scale*.8); build(); slow=0; skip=1; } }
+    else { slow=0; if(fps>58.5 && now>upAfter){ upAfter=now+2500;
+        if(scale<cap-.02){ scale=Math.min(cap,scale*1.1); build(); skip=1; } else cap=Math.min(1,cap+.03); } } // the cap relaxes while the frame rate holds
+  }
+}
+let upAfter=6000;
+
+// the exact edge of the shadow for this camera, wherever it is and however it moves
+function edgeOnScreen(C,n){ return edgeLoop(C.x,n).map(e=>onScreen(C,e.pt,e.p)); }
+function drawGuide(){
+  g2.clearRect(0,0,guide.width,guide.height);
+  drawAim();
+  if(S.pred<.01 || S.grav<.99) return;
+  setHole(); const C=camera(), pts=edgeOnScreen(C,48); if(pts.length<4) return; pts.push(pts[0]);
+  g2.globalAlpha=S.pred*veil; g2.lineWidth=1.25*dpr; g2.strokeStyle='#8fd3ff'; g2.setLineDash([5*dpr,6*dpr]); g2.beginPath();
+  let pen=false, lab=null;
+  for(const s of pts){ if(!s || Math.abs(s[0])>1e5 || Math.abs(s[1])>1e5){ pen=false; continue; }
+    if(pen) g2.lineTo(s[0]*dpr,s[1]*dpr); else g2.moveTo(s[0]*dpr,s[1]*dpr); pen=true;
+    if(s[0]>40 && s[0]<cssW-330 && s[1]>40 && s[1]<cssH-40 && (!lab || s[0]-s[1]>lab[0]-lab[1])) lab=s; }
+  g2.stroke(); g2.setLineDash([]);
+  if(lab){ g2.fillStyle='#bfe6ff'; g2.font=(11.5*dpr)+'px ui-monospace,Consolas,Menlo,monospace'; g2.textBaseline='middle';
+    g2.fillText('shadow edge predicted by general relativity',(lab[0]+14)*dpr,(lab[1]-12)*dpr); }
+  g2.globalAlpha=1;
+}
+$('nebCredits').innerHTML=NEBULAE.map(n=>'<p><span>'+n.name+'</span>. '+n.credit.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'. Drawn about '+n.enlarged+' times its real size.</p>').join('');
+setSpin(S.spin); $('spin').value=S.spin; $('spinV').textContent=S.spin.toFixed(2);
+requestAnimationFrame(frame);
+
+/* ---------- test probes ---------- */
+window.__neb=()=>({loaded:nebLoaded,on:nebOn,size:NEB_S,list:NEBULAE,lookTo,i:nebI}); window.__K=K; window.__k={kr,khor,kcap,kedge,kseen,kframe,khover,kphoton,kstep,kderiv,klower,kut,kip,kgas,komega,kisco,kH,delay,velocity,setVelocity,edgeLoop,onScreen,castRay};
+window.__bodies=bodies; window.__bits=bits; window.__launch=launch; window.__phys={spawn,toss,addBit,shred,TIDE};
+window.__aim={pick,predict,aimVelocity,start:(x,y)=>{ downX=x; downY=y; startAim(); },set:(x,y)=>{ aim.x=x; aim.y=y; },fire:()=>{ const a=aim; end(); fire(a); },cam:camera,get:()=>aim};
+window.__frame=()=>{ const C=camera(), E=C.E; let w=Math.abs(kip(C.x,E[0],E[0])+1); for(let i=1;i<4;i++){ w=Math.max(w,Math.abs(kip(C.x,E[i],E[i])-1)); for(let j=0;j<i;j++) w=Math.max(w,Math.abs(kip(C.x,E[i],E[j]))); } return w; };
+window.__ride={start:startRide,get:()=>ride,put:(x,v,yaw,pitch,zoom)=>{ if(!ride) startRide(); const b={x,p:[0,0,0],pt:-1,dv:0,own:true,t:0}; setVelocity(b,v); ride.b=b; ride.k=1; ride.up=[0,1,0]; ride.axis=null; ride.yaw=yaw||0; ride.pitch=pitch||0; if(zoom) ride.zoom=zoom; veil=1; }};
+window.__simulate=(sec,fps)=>{ fps=fps||60; for(let i=0;i<sec*fps;i++){ setHole(); let dtc=5.5/fps; if(ride){ dtc=stepRide(1/fps); if(ride) camX=ride.b.x; } S.time+=dtc; stepThings(dtc,1/fps); } };
+window.__scale=v=>{ window.__fix=true; scale=v; build(); };
+window.__setSpin=s=>{ setSpin(s); $('spin').value=s; $('spinV').textContent=s.toFixed(2); };
+// milliseconds of GPU time per scene pass at the current size
+window.__bench=function(n){ n=n||20; const px=new Uint8Array(4); gl.finish();
+  const t=performance.now();
+  for(let i=0;i<n;i++){ sceneUniforms(); gl.drawArrays(gl.TRIANGLES,0,3); }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,downs[LEVELS-1].f); gl.readPixels(0,0,1,1,gl.RGBA,hdr?gl.FLOAT:gl.UNSIGNED_BYTE,hdr?new Float32Array(4):px);
+  gl.finish(); return {ms:(performance.now()-t)/n, W, H, scale}; };
+// the scene buffer, with the given probe mode (0: the picture, 1: escaped or captured, 2: frequency shift)
+window.__grab=function(mode){ fillVolume(); sceneUniforms(); gl.uniform1f(P.scene.u.uProbe,mode||0); gl.drawArrays(gl.TRIANGLES,0,3); gl.uniform1f(P.scene.u.uProbe,0);
+  const buf=hdr?new Float32Array(W*H*4):new Uint8Array(W*H*4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,scene.f); gl.readPixels(0,0,W,H,gl.RGBA,hdr?gl.FLOAT:gl.UNSIGNED_BYTE,buf); return {buf,W,H}; };
+window.__shift=function(){ const g=window.__grab(2); return g.buf[((g.H>>1)*g.W+(g.W>>1))*4]; };
+// where the rendered shadow ends against the exact outline: for each exact edge point, the rendered edge along the line from the outline's middle
+window.__edge=function(n){ const C=camera(), g=window.__grab(1), thr=hdr?.5:100, pts=edgeOnScreen(C,n||16).filter(Boolean).map(s=>[s[0]/cssW*g.W,(1-s[1]/cssH)*g.H]);
+  if(pts.length<3) return {points:0};
+  const cx=pts.reduce((t,q)=>t+q[0],0)/pts.length, cy=pts.reduce((t,q)=>t+q[1],0)/pts.length; let worst=0, mean=0, m=0;
+  const lit=(x,y)=>{ x=Math.round(x); y=Math.round(y); return x<0||y<0||x>=g.W||y>=g.H?-1:(g.buf[(y*g.W+x)*4]>thr?1:0); };
+  for(const q of pts){ const L=Math.hypot(q[0]-cx,q[1]-cy); if(L<3) continue; let s=0, ok=true; for(;s<3*L;s+=.25){ const v=lit(cx+(q[0]-cx)*s/L,cy+(q[1]-cy)*s/L); if(v<0){ ok=false; break; } if(v) break; }
+    if(!ok) continue; const e=(s-L)/L; worst=Math.max(worst,Math.abs(e)); mean+=e; m++; }
+  if(pts.length<3) return {points:0};
+  return {points:m, worstPct:+(worst*100).toFixed(2), meanPct:+(mean/Math.max(1,m)*100).toFixed(2), sizePx:+Math.hypot(pts[0][0]-cx,pts[0][1]-cy).toFixed(1), W:g.W, H:g.H}; };
+}
+// the shaders take a second or two to compile on a cold start, so let the title paint first
+setTimeout(main,60);
+</script>
+</body>
+</html>

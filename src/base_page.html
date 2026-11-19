@@ -1,0 +1,1184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photon Ring</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%23ffb469' stroke-width='2.5'/%3E%3Cpath d='M3 18c8 4 18 4 26 0' fill='none' stroke='%23ffb469' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta name="description" content="A black hole traced live in your browser. Every pixel follows a light path through curved spacetime. One file, no libraries, no images.">
+<style>
+  :root{
+    --ink:#f4ecdd; --dim:rgba(244,236,221,.62); --faint:rgba(244,236,221,.34);
+    --line:rgba(244,236,221,.16); --amber:#ffb469; --panel:rgba(10,9,8,.72);
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+    --mono:ui-monospace,"Cascadia Mono","SF Mono",Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#000;color:var(--ink);overflow:hidden}
+  body{font-family:var(--serif);-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
+  #panel{user-select:text;-webkit-user-select:text}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #gl{cursor:grab;touch-action:none}
+  #gl.drag{cursor:grabbing}
+  #gl.aim{cursor:crosshair}
+  #guide{pointer-events:none}
+  #scrim{position:fixed;inset:0;z-index:2;pointer-events:none;background:
+    radial-gradient(ellipse 360px 160px at 0 0,rgba(0,0,0,.7),transparent 72%),
+    radial-gradient(ellipse 760px 200px at 100% 100%,rgba(0,0,0,.6),transparent 70%)}
+  .ui{position:fixed;z-index:3;transition:opacity 1.2s ease}
+  #title,#hud,#hint{text-shadow:0 0 14px rgba(0,0,0,.9),0 1px 3px rgba(0,0,0,.9)}
+  #title{left:40px;top:34px;max-width:360px}
+  #title h1{margin:0;font-weight:400;font-size:30px;letter-spacing:.01em;line-height:1}
+  #hud{display:none;left:28px;bottom:26px;padding:10px 14px;border-radius:12px;background:rgba(0,0,0,.7);
+       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(244,236,221,.08);font-family:var(--mono);font-size:11.5px;line-height:1.9;color:var(--dim);
+       letter-spacing:.03em;font-variant-numeric:tabular-nums}
+  body.readout #hud{display:block}
+  body.readout #hint,body.readout #note{left:calc(50% + 72px)}
+  #hud b{font-weight:400;color:var(--ink)}
+  #hud .k{display:inline-block;width:11em;color:var(--faint)}
+  #controls{right:40px;bottom:34px;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+  #drawer{display:flex;flex-direction:column;align-items:flex-end;gap:8px;
+          transition:opacity .25s ease,transform .25s ease,visibility 0s}
+  #controls:not(.open) #drawer{opacity:0;transform:translateY(10px);visibility:hidden;pointer-events:none;
+          transition:opacity .2s ease,transform .2s ease,visibility 0s .2s}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  .lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+       margin-right:4px;text-shadow:0 0 10px #000,0 1px 2px #000}
+  .btn.sm{padding:8px 12px}
+  #bC .chev{display:inline-block;width:7px;height:7px;margin-left:10px;border-right:1.5px solid currentColor;
+       border-top:1.5px solid currentColor;transform:translateY(1px) rotate(-45deg);transition:transform .25s ease}
+  #controls.open #bC .chev{transform:translateY(-3px) rotate(135deg)}
+  button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+  .btn{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+       padding:10px 14px;border:1px solid var(--line);border-radius:999px;color:var(--dim);
+       background:rgba(0,0,0,.35);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+       transition:color .2s,border-color .2s,background .2s}
+  .btn:hover{color:var(--ink);border-color:rgba(244,236,221,.4)}
+  .btn:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  .btn[aria-pressed="true"]{color:#120c05;background:var(--amber);border-color:var(--amber)}
+  .btn kbd{font:inherit;opacity:.55;margin-left:.6em}
+  #hint{left:50%;bottom:46px;transform:translateX(-50%);font-family:var(--mono);font-size:11.5px;
+        letter-spacing:.08em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+  #hint.gone,body.riding #hint{opacity:0}
+  #note{left:50%;bottom:46px;transform:translateX(-50%);font-family:var(--mono);font-size:11.5px;
+        letter-spacing:.08em;text-transform:uppercase;color:var(--dim);text-align:center;width:max-content;max-width:min(560px,46vw);line-height:1.8;
+        text-shadow:0 0 14px rgba(0,0,0,.9),0 1px 3px rgba(0,0,0,.9);opacity:0;pointer-events:none}
+  #note.on{opacity:1}
+  .rid{display:none} body.riding .rid{display:block} body.riding .orb{display:none}
+  #panel{position:fixed;z-index:5;top:0;right:0;height:100%;width:min(460px,92vw);padding:40px 40px 48px;
+         background:var(--panel);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+         border-left:1px solid var(--line);overflow:auto;transform:translateX(102%);
+         transition:transform .5s cubic-bezier(.2,.7,.2,1),visibility 0s .5s;visibility:hidden}
+  #panel.open{transform:none;visibility:visible;transition:transform .5s cubic-bezier(.2,.7,.2,1),visibility 0s}
+  #panel h2{margin:0 0 6px;font-weight:400;font-size:24px}
+  #panel h3{margin:30px 0 8px;font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:.1em;
+            text-transform:uppercase;color:var(--amber)}
+  #panel p{margin:0 0 10px;font-size:15px;line-height:1.55;color:var(--dim)}
+  #panel .eq{font-family:var(--mono);font-size:13px;color:var(--ink);padding:10px 12px;margin:8px 0 12px;
+             border:1px solid var(--line);border-radius:8px;background:rgba(0,0,0,.3);line-height:1.7}
+  #panel table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin:8px 0 12px}
+  #panel td,#panel th{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;font-weight:400}
+  #panel td:first-child,#panel th:first-child{text-align:left;color:var(--dim)}
+  #panel th{color:var(--faint);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+  #close{position:absolute;top:30px;right:30px;width:36px;height:36px;border:1px solid var(--line);border-radius:50%;
+         font-family:var(--mono);color:var(--dim)}
+  #close:hover{color:var(--ink)}
+  #fallback{position:fixed;inset:0;z-index:9;display:none;place-items:center;text-align:center;padding:40px;
+            background:radial-gradient(circle at 50% 50%,#000 0 90px,#ffb469 92px,#3a1606 150px,#000 420px)}
+  #fallback div{margin-top:520px;max-width:440px;color:var(--dim);font-size:16px;line-height:1.5}
+  @media (max-width:1100px){#hint{bottom:96px}}
+  @media (max-width:1360px){body.readout #hint{left:50%;bottom:150px}}
+  @media (max-width:900px){#hud .opt{display:none}.btn kbd{display:none}}
+  @media (prefers-reduced-motion:reduce){.ui,#panel{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="gl" aria-label="Live rendering of a black hole and its accretion disk"></canvas>
+<canvas id="guide"></canvas>
+<div id="scrim"></div>
+
+<header id="title" class="ui">
+  <h1>Photon Ring</h1>
+</header>
+
+<div id="hud" class="ui" aria-live="off">
+  <div><span class="k">distance</span><b id="hR">30.0</b> r<sub>s</sub></div>
+  <div class="orb"><span class="k">above the disk</span><b id="hI">8</b>&deg;</div>
+  <div class="orb opt"><span class="k">clock rate here</span><b id="hC">0.983</b> of far away</div>
+  <div class="rid"><span class="k">speed</span><b id="hV">0.00</b></div>
+  <div class="rid"><span class="k">your clock</span><b id="hT">0.0</b> rₛ/c</div>
+  <div class="rid"><span class="k">far-away clock</span><b id="hTf">0.0</b></div>
+  <div class="rid"><span class="k">playback speed</span><b id="hP">1.00</b></div>
+  <div class="opt"><span class="k">render</span><b id="hQ">100</b>% &middot; <b id="hF">60</b> fps</div>
+</div>
+
+<div id="note" class="ui"></div>
+<div id="hint" class="ui">Drag to orbit &nbsp;&middot;&nbsp; Scroll to approach &nbsp;&middot;&nbsp; Click to launch &nbsp;&middot;&nbsp; Hold, then drag to aim &nbsp;&middot;&nbsp; R to ride along</div>
+
+<nav id="controls" class="ui" aria-label="Controls">
+  <div id="drawer">
+    <div class="row" role="group" aria-label="What a click launches">
+      <span class="lab">Click to launch, hold and drag to aim</span>
+      <button class="btn sm" data-launch="any" aria-pressed="true">Any</button>
+      <button class="btn sm" data-launch="meteor" aria-pressed="false">Meteor</button>
+      <button class="btn sm" data-launch="planet" aria-pressed="false">Planet</button>
+      <button class="btn sm" data-launch="star" aria-pressed="false">Star</button>
+      <button class="btn sm" data-launch="rocket" aria-pressed="false">Rocket</button>
+    </div>
+    <div class="row">
+      <button class="btn" id="bG" aria-pressed="true" title="Bend light (G)">Gravity<kbd>G</kbd></button>
+      <button class="btn" id="bD" aria-pressed="true" title="Doppler and redshift (D)">Redshift<kbd>D</kbd></button>
+      <button class="btn" id="bP" aria-pressed="false" title="Draw the predicted shadow edge (P)">Prediction<kbd>P</kbd></button>
+      <button class="btn" id="bS" aria-pressed="false" title="Sound (S)">Sound<kbd>S</kbd></button>
+    </div>
+    <div class="row">
+      <button class="btn" id="bR" aria-pressed="false" title="Fall in with the last thing you launched (R)">Ride along<kbd>R</kbd></button>
+      <button class="btn" id="bX" title="Remove launched objects (X)">Clear objects<kbd>X</kbd></button>
+      <button class="btn" id="bN" aria-pressed="false" title="Show distance, clocks and frame rate">Readout</button>
+      <button class="btn" id="bH" aria-expanded="false" aria-controls="panel">How it works</button>
+    </div>
+  </div>
+  <button class="btn" id="bC" aria-expanded="false" aria-controls="drawer">Controls<span class="chev"></span></button>
+</nav>
+
+<aside id="panel" aria-label="How it works">
+  <button id="close" aria-label="Close">&#x2715;</button>
+  <h2>How it works</h2>
+  <p>Nothing here is a picture or a video. Your graphics card draws every frame from the equations below.</p>
+
+  <h3>1. Light paths</h3>
+  <p>For each pixel, one ray is traced backward from the camera. Around a non-spinning black hole (the Schwarzschild solution), a light path obeys</p>
+  <div class="eq">d&sup2;u/d&phi;&sup2; + u = (3/2) r<sub>s</sub> u&sup2;, &nbsp; u = 1/r</div>
+  <p>which is the same path a particle takes under the force below, so each ray is stepped with a leapfrog integrator, up to <span id="pSteps">220</span> steps per pixel:</p>
+  <div class="eq">a = &minus;(3/2) r<sub>s</sub> h&sup2; r&#770; / r&#8308;, &nbsp; h = |r &times; v|</div>
+
+  <h3>2. The disk</h3>
+  <p>Gas orbits in a thin disk from the innermost stable orbit at 3 r<sub>s</sub>, where it moves at half the speed of light past anyone hovering there. Its color is a black body at the temperature the camera would measure after the exact frequency shift</p>
+  <div class="eq">g = &radic;(1 &minus; 3r<sub>s</sub>/2r) / (1 &minus; &Omega;&#8467;)<br>&Omega; = &radic;(r<sub>s</sub>/2r&sup3;)</div>
+  <p>and its brightness scales as g&#8308;. The side turning toward you is hotter and brighter. The side turning away is redder and dim.</p>
+
+  <h3>3. What you are seeing</h3>
+  <p>The arc over the top of the shadow is the far side of the disk. Its light was bent up and over the hole. The thin bright ring hugging the shadow is light that circled the hole before escaping.</p>
+
+  <h3>4. The page checks itself</h3>
+  <p>General relativity gives exact values for a few things. On load, the same stepping rule runs in JavaScript and is compared with them.</p>
+  <table>
+    <tr><th>Quantity</th><th>This page</th><th>Exact</th></tr>
+    <tr><td>Shadow edge, b / r<sub>s</sub></td><td id="cB">&hellip;</td><td>2.5981</td></tr>
+    <tr><td>Bending at b = 20 r<sub>s</sub></td><td id="cD">&hellip;</td><td>6.194&deg;</td></tr>
+  </table>
+  <p>The Prediction button draws the exact shadow edge for your current distance over the render, so you can see the two agree.</p>
+
+  <h3>5. Things you launch</h3>
+  <p>Click to launch a meteor, a planet, a star or a rocket. Hold, then drag, to choose its direction and speed. The blue line is the path it will take. Each one free-falls along the path general relativity gives a body near the hole, stepped in its own time:</p>
+  <div class="eq">a = &minus;(r<sub>s</sub>/2) r&#770;/r&sup2; &minus; (3/2) r<sub>s</sub> h&sup2; r&#770;/r&#8308;</div>
+  <p>The second term is what Newton lacks. It makes orbits swing around instead of closing, and it pulls in anything that comes too near. Seen from far away, a falling object's clock slows as it nears the horizon, so it reddens and fades instead of crossing.</p>
+
+  <h3>6. Drag and tides</h3>
+  <p>An orbit does not decay by itself. Things fall in here because the disk slows them. Inside the disk an object is dragged toward the speed of the gas, which circles the hole and drifts inward. Where it ploughs through, the heated gas glows.</p>
+  <p>Gravity pulls harder on the near side of an object than on the far side. Close in, that difference beats the gravity holding a planet or a star together. The page then swaps it for a few hundred pieces that keep its velocity but start at different points across it, so each piece follows its own orbit and they spread into a stream. A meteor or a rocket is held together by the strength of its material, and stays whole.</p>
+  <p>Each piece is drawn where its light reaches you. For every piece, the graphics card searches for the bent light path from the camera to it, the short way round the hole and the long way round. That is why debris behind the hole shows up twice.</p>
+
+  <h3>7. Riding along</h3>
+  <p>Ride along puts the camera on the path of the last thing you launched, or on a path of its own if nothing is flying. A moving camera sees two more effects. Light from the direction of travel arrives bunched together and shifted toward blue. Light from behind is spread out and reddened. Brightness follows the fourth power of that shift, which is why the ring blazes on the way in.</p>
+  <p>The camera crosses the horizon in a finite time on its own clock, while the far-away clock runs off without limit. Inside, light from outside still arrives, so the sky stays in view beside the shadow until the ride ends near the centre.</p>
+  <p>For a camera falling straight in from rest, general relativity puts the shadow's edge 42.1&deg; from the middle of the hole at the moment of crossing. Tested against that exact curve, the render agrees within about 1% from 20 r<sub>s</sub> down to 0.25 r<sub>s</sub>. The Prediction button draws the exact edge for whatever path you are riding.</p>
+
+  <h3>What is not physics</h3>
+  <p>The streaks in the disk are procedural noise, drawn for texture. The sky is invented too: its stars, star band, gas clouds and galaxies are generated by the page and are not a map of the real sky. The disk's temperature scale and the exposure are set for the eye, and its temperature falls off by the standard Newtonian thin-disk formula. The hole does not spin and the disk has no thickness. Outside a ride, the camera hovers in place. Everything is drawn as if its light arrived at once, so the delay light takes to travel is left out.</p>
+  <p>Launched objects are drawn far too large for the hole. The distances at which the planet and the star come apart are picked to be seen, not computed: where tides really win depends on the hole's mass and the object's density. The disk's drag is set far stronger than a real disk's, so that things fall in while you watch. Debris does not collide or join the disk, and it fades after a while. The brightness of its second image is only roughly corrected for lensing. The rocket only coasts. The looks and lighting of objects are decoration. Their colour is not shifted by their own motion, or by the camera's on a ride.</p>
+  <p>On a ride, playback slows as you fall so the last part can be watched, the exposure closes down when the view fills with bright gas, and the rest of the scene never runs more than three times faster than your own clock. The camera is not torn apart, and the ride stops at 0.16 r<sub>s</sub>, short of the centre. Directions that receive no light from outside are drawn black.</p>
+
+  <h3>Credit</h3>
+  <p>Made by Walker Robinson with Claude.</p>
+</aside>
+
+<div id="fallback"><div>This page draws a black hole with WebGL2, which this browser or device does not offer. Try a current desktop Chrome, Edge, Firefox or Safari.</div></div>
+
+<script>
+"use strict";
+function main(){
+const $=id=>document.getElementById(id);
+const canvas=$('gl'), guide=$('guide'), g2=guide.getContext('2d');
+const gl=canvas.getContext('webgl2',{antialias:false,alpha:false,powerPreference:'high-performance'});
+if(!gl){ $('fallback').style.display='grid'; return; }
+
+const STEPS=220, RIN=3.0, ROUT=15.0;
+$('pSteps').textContent=STEPS;
+const hdr=!!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_half_float');
+
+/* ---------- shaders ---------- */
+const VS=`#version 300 es
+void main(){ vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2)); gl_Position=vec4(p*2.-1.,0.,1.); }`;
+
+const SCENE=`#version 300 es
+precision highp float;
+uniform vec2 uRes; uniform vec3 uCam; uniform mat3 uBasis;
+uniform float uFocal,uTime,uGrav,uDop,uEsc,uEnc,uProbe;
+uniform vec4 uU; uniform vec3 uUt; // the camera's motion: (u^v, dr/dtau, 1 - r_s/r, riding) and its sideways velocity
+float gCam; // frequency the camera measures, over the frequency far away, for the ray being traced
+uniform highp sampler3D uNoise;
+uniform vec4 uB[6],uBA[6],uBG[6]; uniform int uNB; // launched objects: centre+radius, half-axis+kind, clock rate+seed
+out vec4 o;
+const float RIN=${RIN.toFixed(1)}, ROUT=${ROUT.toFixed(1)}, TAU=6.2831853;
+const float FMAX=0.0021008; // peak of (1-sqrt(RIN/r))/r^3, at r = 49/12
+
+float hash21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
+float hash31(vec3 p){ p=fract(p*vec3(.1031,.1030,.0973)); p+=dot(p,p.yzx+33.33); return fract((p.x+p.y)*p.z); }
+float pnoise(vec2 p,float per){
+  vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+  float x0=mod(i.x,per), x1=mod(i.x+1.,per);
+  return mix(mix(hash21(vec2(x0,i.y)),hash21(vec2(x1,i.y)),f.x),
+             mix(hash21(vec2(x0,i.y+1.)),hash21(vec2(x1,i.y+1.)),f.x),f.y);
+}
+float streaks(float a,float r){
+  float s=0., amp=.5, per=5.; vec2 q=vec2(fract(a)*per, r*1.15);
+  for(int i=0;i<6;i++){ s+=amp*pnoise(q,per); q*=2.; q.y+=17.3; per*=2.; amp*=.5; }
+  return s;
+}
+// smooth 3D noise, read from a small texture of random values made at startup (far quicker to compile than hashing here)
+float vnoise(vec3 p){ vec3 f=fract(p); return textureLod(uNoise,(floor(p)+f*f*(3.-2.*f)+.5)/32.,0.).r; } // textureLod: no screen derivatives, so it can sit inside loops and branches
+float fbm3(vec3 p){ float s=0., a=.5; for(int i=0;i<5;i++){ s+=a*vnoise(p); p=p*2.03+7.1; a*=.5; } return s; }
+
+// black body colour, linear RGB, normalised (fit after Tanner Helland)
+vec3 bb(float T){
+  float t=clamp(T,1000.,40000.)/100.; vec3 c;
+  c.r = t<=66. ? 1. : 1.292936*pow(t-60.,-.1332047);
+  c.g = t<=66. ? .3900816*log(t)-.6318414 : 1.1298909*pow(t-60.,-.0755148);
+  c.b = t>=66. ? 1. : (t<=19. ? 0. : .5432068*log(t-10.)-1.1962541);
+  return pow(clamp(c,0.,1.),vec3(2.2));
+}
+
+vec4 disk(vec3 x,float ell,float order){
+  float r=length(x.xz);
+  if(r<RIN||r>ROUT) return vec4(0);
+  float om=sqrt(.5/(r*r*r));
+  float phi=atan(-x.z,x.x)/TAU;
+  // two sheared noise layers, cross-faded so the wind-up never accumulates
+  const float T=70.;
+  float t1=mod(uTime,T), t2=mod(uTime+.5*T,T);
+  float w1=1.-abs(t1/T*2.-1.);
+  float n1=streaks(phi-om*(t1-.5*T)/TAU,r);
+  float n2=streaks(phi-om*(t2-.5*T)/TAU+.37,r+31.);
+  float n=mix(n2,n1,w1);
+  n=.5+(n-.5)/sqrt(w1*w1+(1.-w1)*(1.-w1));
+  n=smoothstep(.22,.78,n);
+  n=mix(n,.55,clamp(order-.0,0.,1.)*.75); // images that circled the hole are too thin to carry texture
+  float f=(1.-sqrt(RIN/r))/(r*r*r);
+  float Tn=pow(max(f,0.)/FMAX,.25);
+  float g=sqrt(1.-1.5/r)/max(1.-om*ell,1e-3)*gCam;
+  g=mix(1.,g,uDop);
+  float Tobs=5200.*Tn*g;
+  vec3 c=bb(Tobs)*pow(Tn*g,4.)*(.25+1.35*n*n)*.95;
+  float a=smoothstep(ROUT,ROUT*.55,r)*smoothstep(RIN,RIN+.35,r)*(.5+.5*n);
+  return vec4(c,clamp(a,0.,1.));
+}
+
+float ridge(vec3 p){ float s=0., a=.5; for(int i=0;i<4;i++){ s+=a*(1.-abs(2.*vnoise(p)-1.)); p=p*2.1+3.7; a*=.5; } return s; }
+// Clouds of glowing gas: filaments in one colour, denser knots in another, dark dust across them.
+// Only the cloud the direction falls in is worked out. Rows: red hydrogen with blue-green oxygen knots,
+// blue reflection clouds, pink and amber ones.
+const vec4 NEB[8]=vec4[8](vec4(-0.3730,0.0170,-0.9277,0.5),vec4(0.8081,-0.3030,0.5051,0.45),vec4(0.1502,-0.5507,-0.8211,0.34),vec4(-0.7027,-0.2008,0.6826,0.42),vec4(0.5503,0.6003,-0.5803,0.5),vec4(-0.2007,0.8530,0.4817,0.36),vec4(0.9510,0.1502,-0.2703,0.38),vec4(-0.1002,-0.9016,0.4208,0.46));
+const vec3 NEBA[8]=vec3[8](vec3(0.26,0.04,0.065),vec3(0.04,0.08,0.27),vec3(0.26,0.06,0.14),vec3(0.22,0.055,0.03),vec3(0.2,0.035,0.07),vec3(0.05,0.1,0.25),vec3(0.24,0.07,0.03),vec3(0.21,0.04,0.09));
+const vec3 NEBB[8]=vec3[8](vec3(0.05,0.2,0.22),vec3(0.2,0.16,0.28),vec3(0.28,0.19,0.08),vec3(0.08,0.22,0.19),vec3(0.06,0.15,0.24),vec3(0.22,0.1,0.2),vec3(0.25,0.2,0.1),vec3(0.05,0.19,0.2));
+vec3 nebulae(vec3 d){
+  float w=0., size=1.; vec3 ca=vec3(0), cb=vec3(0); float seed=0.;
+  for(int i=0;i<8;i++){ float wi=smoothstep(cos(NEB[i].w),cos(NEB[i].w*.3),dot(d,NEB[i].xyz));
+    if(wi>w){ w=wi; size=NEB[i].w; ca=NEBA[i]; cb=NEBB[i]; seed=1.7+7.3*float(i); } }
+  if(w<=0.) return vec3(0);
+  vec3 q=d*(1.9/size)+seed; q+=1.1*(vnoise(q*.8+4.)-.5);
+  float f=fbm3(q), r=ridge(q*1.6+2.);
+  float dens=smoothstep(.38,.75,f)*w;
+  vec3 col=mix(ca,cb,smoothstep(.5,.8,r)*smoothstep(.45,.7,f))*dens*(.25+1.5*r*r*r);
+  return col*smoothstep(.75,.4,.65*vnoise(q*2.4+11.)+.35*vnoise(q*5.3+3.));
+}
+// far spiral galaxies seen at a tilt: warm core, bluer arms
+const vec3 GALC[5]=vec3[5](vec3(-0.8329,0.0262,-0.5528),vec3(0.3506,0.5009,0.7913),vec3(0.3008,-0.2005,-0.9324),vec3(-0.4014,-0.7527,-0.5219),vec3(0.5997,-0.7497,0.2799));
+const vec3 GALX[5]=vec3[5](vec3(0.3,1.0,0.2),vec3(1.0,0.2,-0.4),vec3(0.2,1.0,0.1),vec3(1.0,0.1,0.3),vec3(0.1,0.3,1.0));
+const vec4 GALP[5]=vec4[5](vec4(0.16,0.42,1.0,0.3),vec4(0.11,0.7,4.0,0.24),vec4(0.09,0.3,2.2,0.26),vec4(0.13,0.55,5.1,0.22),vec4(0.08,0.85,3.3,0.25)); // size, tilt, arm phase, brightness
+vec3 galaxies(vec3 d){
+  int k=0; float best=-1.; for(int i=0;i<5;i++){ float m=dot(d,GALC[i]); if(m>best){ best=m; k=i; } }
+  vec3 c=GALC[k], ax=GALX[k]; float size=GALP[k].x, tilt=GALP[k].y, seed=GALP[k].z, amp=GALP[k].w;
+  if(dot(d,c)<cos(size*1.7)) return vec3(0);
+  vec3 e1=normalize(cross(c,ax)), e2=cross(c,e1);
+  vec2 p=vec2(dot(d,e1),dot(d,e2)/tilt)/size; float r=length(p), th=atan(p.y,p.x);
+  float arms=.5+.5*cos(2.*th-6.5*log(r+.04)+seed);
+  float n=vnoise(vec3(p*14.,seed));
+  float disc=exp(-r*3.4)*(.18+arms*arms*(.5+1.1*n*n));
+  vec3 col=mix(vec3(1.,.82,.58),vec3(.55,.72,1.),smoothstep(.08,.5,r)*arms);
+  return (col*disc+vec3(1.,.9,.72)*exp(-r*r*70.)*1.6)*smoothstep(1.7,.9,r)*amp;
+}
+vec3 sky(vec3 d,float g){
+  vec3 c=vec3(0);
+  for(int l=0;l<3;l++){
+    float S= l==0?34.: l==1?71.:139.;
+    vec3 q=d*S+float(l)*19.7; vec3 id=floor(q); vec3 f=fract(q)-.5;
+    float h=hash31(id);
+    vec3 off=(vec3(hash31(id+1.3),hash31(id+2.7),hash31(id+5.1))-.5)*.6;
+    float dist=length(f-off);
+    float on=step(.90,h);
+    float mag=pow(hash31(id+9.1),6.)*9.+.25;
+    float rad= l==0?.085: l==1?.12:.17;
+    float core=smoothstep(rad,0.,dist);
+    vec3 tint=bb((3500.+9000.*hash31(id+3.3))*g);
+    c+=on*mag*core*core*tint*(l==0?1.6: l==1?.8:.4);
+  }
+  { // a few bright stars with a soft glow
+    vec3 q=d*11.+3.1, id=floor(q), f=fract(q)-.5;
+    vec3 off=(vec3(hash31(id+1.3),hash31(id+2.7),hash31(id+5.1))-.5)*.5;
+    float dist=length(f-off), on=step(.86,hash31(id+7.7));
+    c+=on*bb((3200.+16000.*hash31(id+3.3))*g)*(6.*smoothstep(.02,0.,dist)+.05/(1.+dist*dist*900.)*smoothstep(.45,.1,dist));
+  }
+  // the galaxy seen from inside: a band of unresolved stars with a bright bulge and a lane of dust
+  vec3 n=normalize(vec3(.35,.82,-.45)), gc=normalize(cross(n,vec3(.2,.1,1.)));
+  float lat=dot(d,n), bulge=exp(-(1.-dot(d,gc))*5.);
+  float band=exp(-pow(lat*(3.4-1.6*bulge),2.));
+  float cl=fbm3(d*3.1+2.);
+  float dust=fbm3(d*7.3-4.);
+  float lane=smoothstep(.0,.1,abs(lat+.07*(dust-.5)))*.75+.25;
+  c+=band*(.006+.16*cl*cl*cl+.14*bulge*cl)*mix(vec3(.55,.62,1.),vec3(1.,.74,.5),clamp(cl+.5*bulge,0.,1.))*smoothstep(.75,.3,dust)*lane;
+  c+=nebulae(d)+galaxies(d);
+  return c*g*g*g*g; // brightness goes as the fourth power of the frequency shift
+}
+
+// Launched objects are capsules (a sphere when the axis is zero). Returns where along the step
+// p -> p+sd the ray enters object k, or 2 for a miss.
+float hitBody(int k,vec3 p,vec3 sd,float sl){
+  vec4 B=uB[k]; vec3 w=p-B.xyz;
+  float reach=sl+uBG[k].z; if(dot(w,w)>reach*reach) return 2.; // too far to touch in this step
+  vec3 ax=uBA[k].xyz;
+  float a=dot(sd,sd), b=dot(sd,ax), c=dot(ax,ax), d=dot(sd,w), e=dot(ax,w), den=a*c-b*b;
+  float s=den>1e-7 ? clamp((b*e-c*d)/den,0.,1.) : clamp(-d/a,0.,1.);
+  float u=c>1e-8 ? clamp((b*s+e)/c,-1.,1.) : 0.;
+  s=clamp((b*u-d)/a,0.,1.);
+  vec3 dv=w+s*sd-u*ax; float d2=dot(dv,dv), R2=B.w*B.w;
+  if(d2>=R2) return 2.;
+  return max(s-sqrt((R2-d2)/a),0.);
+}
+vec3 shadeBody(int k,vec3 x,vec3 rd){
+  vec4 B=uB[k]; vec3 ax=uBA[k].xyz; float kind=uBA[k].w, g=uBG[k].x, seed=uBG[k].y;
+  float c2=dot(ax,ax), u=c2>1e-8 ? clamp(dot(x-B.xyz,ax)/c2,-1.,1.) : 0.;
+  vec3 n=normalize(x-(B.xyz+u*ax)), V=-rd, L=normalize(-B.xyz); // lit by the disk, from the hole's direction
+  float nl=max(dot(n,L),0.), mu=max(dot(n,V),0.), fres=pow(1.-mu,3.);
+  vec3 light=vec3(1.,.84,.62)*1.7, q=n*2.+seed*17., c;
+  if(kind<.5){ // meteor: cratered rock
+    float f=fbm3(q*2.2), cr=smoothstep(.56,.62,vnoise(q*3.+5.));
+    c=mix(vec3(.10,.085,.075),vec3(.38,.31,.26),f)*(1.-.5*cr)*(light*nl+.05);
+  } else if(kind<1.5){ // planet: oceans, land, cloud, ice caps, thin air
+    float f=fbm3(q*1.6), land=smoothstep(.5,.56,f), cl=smoothstep(.5,.68,fbm3(q*3.1+9.));
+    vec3 alb=mix(vec3(.03,.12,.32),mix(vec3(.11,.28,.09),vec3(.45,.36,.22),fbm3(q*4.)),land);
+    alb=mix(alb,vec3(.9),cl*.8); alb=mix(alb,vec3(.95),smoothstep(.8,.9,abs(n.y)));
+    c=alb*(light*nl+.03)+vec3(.25,.5,1.)*fres*(.2+nl)*.7;
+  } else if(kind<2.5){ // star: a black body at its clock-shifted temperature
+    c=bb(5800.*g)*pow(g,4.)*(.4+.6*mu)*(.85+.3*fbm3(q*5.+uTime*.02))*5.;
+    return c;
+  } else if(kind<3.5){ // rocket hull
+    vec3 alb=mix(vec3(.82,.84,.86),vec3(.85,.12,.08),step(.5,u));
+    alb=mix(alb,vec3(.07,.1,.16),smoothstep(.06,.0,abs(u-.2)));
+    alb=mix(alb,vec3(.12),step(u,-.82));
+    c=alb*(light*nl+.07)+fres*.08;
+  } else { // engine flame
+    c=mix(vec3(1.,.45,.12),vec3(.6,.8,1.),mu*mu)*(1.2+4.5*mu*mu)*(.7+.3*sin(uTime*9.+u*7.));
+  }
+  return c*g*g;
+}
+
+// The photon that reaches the camera from direction d of the camera's own frame: v is the velocity to
+// trace it back with, kt its sideways momentum, E its energy far away (the camera measures 1).
+// Written in ingoing Eddington-Finkelstein components, which stay finite at the horizon.
+// A hovering camera is the case with no motion: v = d with its radial part shrunk by sqrt(1 - r_s/r).
+bool photon(vec3 d,out vec3 v,out vec3 kt,out float E){
+  vec3 rh=normalize(uCam); float a=dot(d,rh), m=1.-a;
+  float kr=uU.y*m-(a-dot(d,uUt))/uU.x;
+  kt=uUt*m-(d-a*rh);
+  E=uU.z*uU.x*m-kr;
+  v=-(kr*rh+kt);
+  return E>1e-5; // inside the horizon some directions receive no light from outside
+}
+float impact(vec2 uv){ vec3 v,kt; float E;
+  return photon(normalize(uBasis*vec3(uv,uFocal)),v,kt,E) ? length(cross(uCam,kt))/E : 0.; }
+
+vec3 trace(vec2 uv){
+  vec3 d=normalize(uBasis*vec3(uv,uFocal)), v, kt; float E;
+  if(!photon(d,v,kt,E)) return vec3(0);
+  vec3 p=uCam; v=normalize(v);
+  vec3 hv=cross(p,v); float h2=dot(hv,hv);
+  float ell=cross(p,kt).y/E; gCam=1./E;
+  if(uProbe>1.5) return vec3(gCam); // test only: the frequency shift
+  vec3 col=vec3(0); float tr=1., order=0.; bool open=false;
+  for(int i=0;i<${STEPS};i++){
+    float r2=dot(p,p), r=sqrt(r2);
+    if(r<1. && dot(p,v)<0.) break;
+    if(r>uEsc && dot(p,v)>0.){ open=true; break; }
+    float dt=(r>1. ? max(.035,.11*(r-.7)) : max(.004,.018*r))/min(length(v),1.); // a ray that starts deep in slows as it climbs: keep its steps the same length
+    vec3 pm=p+v*(.5*dt); float m2=dot(pm,pm);
+    v-=1.5*h2*uGrav*pm/(m2*m2*sqrt(m2))*dt;
+    vec3 pn=pm+v*(.5*dt);
+    float tb=2.; int bk=-1;
+    if(uProbe<.5 && uNB>0){ vec3 sd=pn-p; float sl=length(sd);
+      for(int k=0;k<6;k++){ if(k>=uNB) break; float t=hitBody(k,p,sd,sl); if(t<tb){ tb=t; bk=k; } } }
+    if(p.y*pn.y<0. && uProbe<.5){
+      float td=p.y/(p.y-pn.y);
+      if(td<tb){
+        vec4 dk=disk(mix(p,pn,td),ell,order);
+        col+=tr*dk.rgb*dk.a; tr*=1.-dk.a; order+=1.;
+        if(tr<.004) break;
+      }
+    }
+    if(bk>=0){ col+=tr*shadeBody(bk,mix(p,pn,tb),normalize(pn-p)); break; }
+    p=pn;
+  }
+  if(uProbe>.5) return vec3(open?1.:0.); // test only: escaped or captured
+  if(open) col+=tr*sky(normalize(v),mix(1.,gCam,uDop));
+  return min(col,vec3(4000.));
+}
+
+void main(){
+  vec2 uv=(gl_FragCoord.xy-.5*uRes)/uRes.y;
+  // The innermost ring is thinner than a pixel. Where a pixel straddles the critical
+  // impact parameter, average sub-samples along the screen radius so the ring does not sparkle.
+  float px=1./uRes.y, b=impact(uv);
+  vec2 gb=vec2(impact(uv+vec2(px,0.))-b,impact(uv+vec2(0.,px))-b); float db=length(gb);
+  bool fine=uGrav>.6 && uProbe<.5 && b>2.598-2.*db && b<2.66+2.*db;
+  vec2 rd=fine ? gb/max(db,1e-9)*px : vec2(0); int n=fine?8:1;
+  vec3 col=vec3(0);
+  for(int k=0;k<8;k++){ if(k>=n) break; col+=trace(uv+rd*((float(k)+.5)/8.-.5)); }
+  col/=float(n);
+  if(uProbe<.5 && uEnc>.5) col=col/(1.+col);
+  o=vec4(col,1.);
+}`;
+
+const DOWN=`#version 300 es
+precision highp float; uniform sampler2D uTex; uniform vec2 uTexel; uniform float uFirst,uEnc; out vec4 o;
+vec3 S(vec2 uv){ vec3 c=texture(uTex,uv).rgb; if(uEnc>.5) c=c/max(1.-c,.02); return c; }
+void main(){ vec2 uv=gl_FragCoord.xy*uTexel*2.; // uTexel = texel of source, twice the size of this target
+  vec3 c=S(uv)*4.;
+  c+=S(uv+uTexel*vec2(-1,-1))+S(uv+uTexel*vec2(1,-1))+S(uv+uTexel*vec2(-1,1))+S(uv+uTexel*vec2(1,1));
+  c+=(S(uv+uTexel*vec2(-2,0))+S(uv+uTexel*vec2(2,0))+S(uv+uTexel*vec2(0,-2))+S(uv+uTexel*vec2(0,2)))*.5;
+  c/=10.;
+  if(uFirst>.5){ float l=max(c.r,max(c.g,c.b)); c*=smoothstep(.55,2.2,l); c=min(c,vec3(40.)); }
+  if(uEnc>.5) c=c/(1.+c);
+  o=vec4(c,1.); }`;
+
+const UP=`#version 300 es
+precision highp float; uniform sampler2D uTex,uAdd; uniform vec2 uTexel,uOut; uniform float uEnc; out vec4 o;
+vec3 D(vec3 c){ return uEnc>.5 ? c/max(1.-c,.02) : c; }
+void main(){ vec2 uv=gl_FragCoord.xy/uOut; vec2 t=uTexel;
+  vec3 c=D(texture(uTex,uv).rgb)*4.;
+  c+=(D(texture(uTex,uv+vec2(t.x,0)).rgb)+D(texture(uTex,uv-vec2(t.x,0)).rgb)+D(texture(uTex,uv+vec2(0,t.y)).rgb)+D(texture(uTex,uv-vec2(0,t.y)).rgb))*2.;
+  c+=D(texture(uTex,uv+t).rgb)+D(texture(uTex,uv-t).rgb)+D(texture(uTex,uv+vec2(t.x,-t.y)).rgb)+D(texture(uTex,uv+vec2(-t.x,t.y)).rgb);
+  c/=16.;
+  c=c*.92+D(texture(uAdd,uv).rgb);
+  if(uEnc>.5) c=c/(1.+c);
+  o=vec4(c,1.); }`;
+
+const FINAL=`#version 300 es
+precision highp float; uniform sampler2D uScene,uBloom,uLow; uniform vec2 uOut; uniform float uTime,uEnc,uFade,uAuto; out vec4 o;
+vec3 D(vec3 c){ return uEnc>.5 ? c/max(1.-c,.02) : c; }
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.); }
+float hash(vec2 p){ vec3 q=fract(vec3(p.xyx)*.1031); q+=dot(q,q.yzx+33.33); return fract((q.x+q.y)*q.z); }
+void main(){ vec2 uv=gl_FragCoord.xy/uOut;
+  vec3 c=D(texture(uScene,uv).rgb);
+  vec3 b=D(texture(uBloom,uv).rgb);
+  c=c+b*.085;
+  // while riding, the exposure closes down when the view is full of bright gas, as an eye would
+  float m=0.; for(int i=0;i<4;i++){ vec3 l=D(texture(uLow,vec2(.3+.4*float(i&1),.3+.4*float(i>>1))).rgb); m+=max(l.r,max(l.g,l.b))*.25; }
+  c*=mix(1.,1./(1.+3.*m),uAuto);
+  vec2 q=uv-.5; c*=1.-.55*dot(q,q)*1.6;
+  c=aces(c*1.15*uFade);
+  c=pow(c,vec3(1./2.2));
+  c+=(hash(gl_FragCoord.xy+fract(uTime)*311.)-.5)*.022;
+  o=vec4(c,1.); }`;
+
+// Debris is drawn as glowing points. Each point is put where its light reaches the camera: the
+// vertex shader searches for the launch angle whose bent ray passes through the point (uSide 1:
+// the short way round the hole, -1: the long way round, which gives the second image).
+const BVS=`#version 300 es
+precision highp float;
+layout(location=0) in vec3 aPos; layout(location=1) in vec4 aA; // size, temperature, brightness, clock rate
+uniform vec3 uCam,uUt; uniform vec4 uU; uniform mat3 uBasis; uniform vec2 uRes; uniform float uFocal,uGrav,uSide;
+out vec3 vCol;
+const float RIN=${RIN.toFixed(1)}, ROUT=${ROUT.toFixed(1)}, TAU=6.2831853;
+vec3 bb(float T){
+  float t=clamp(T,1000.,40000.)/100.; vec3 c;
+  c.r = t<=66. ? 1. : 1.292936*pow(t-60.,-.1332047);
+  c.g = t<=66. ? .3900816*log(t)-.6318414 : 1.1298909*pow(t-60.,-.0755148);
+  c.b = t>=66. ? 1. : (t<=19. ? 0. : .5432068*log(t-10.)-1.1962541);
+  return pow(clamp(c,0.,1.),vec3(2.2));
+}
+// Radius at which the ray traced back from the camera, at angle ch from the hole in the stepping space, has turned through "want".
+// 0: it fell in first. 1e9: it left first. tr: how much light the disk lets through on the way.
+float shoot(float ch,float D,float rq,float want,vec3 c,vec3 e,vec2 qt,out float tr){
+  float sa=sin(ch), h2=D*D*sa*sa, ang=0.;
+  vec2 p=vec2(D,0.), v=vec2(-cos(ch),sa); tr=1.;
+  for(int i=0;i<160;i++){
+    float r=length(p);
+    if(r<1. && dot(p,v)<0.) return 0.;
+    if(dot(p,v)>0. && r>rq*1.05+.5) return 1e9;   // heading out and already past it
+    float dt=(r>1. ? max(.035,.11*(r-.7)) : max(.004,.018*r))/min(length(v),1.); // a ray that starts deep in slows as it climbs: keep its steps the same length
+    vec2 pm=p+v*(.5*dt); float m2=dot(pm,pm);
+    v-=1.5*h2*uGrav*pm/(m2*m2*sqrt(m2))*dt;
+    vec2 pn=pm+v*(.5*dt);
+    float da=atan(p.x*pn.y-p.y*pn.x,dot(p,pn));
+    float fe=ang+da>=want ? (want-ang)/max(da,1e-6) : 2.;
+    float y0=p.x*c.y+p.y*e.y, y1=pn.x*c.y+pn.y*e.y;
+    if(y0*y1<0.){ // the ray passes through the disk on its way: dim the point
+      float t=y0/(y0-y1); vec2 pc=mix(p,pn,t); float rr=length(pc);
+      if(t<fe && rr>RIN && rr<ROUT) tr*=1.-.5*smoothstep(ROUT,ROUT*.55,rr)*smoothstep(RIN,RIN+.35,rr)*smoothstep(.15,.7,distance(pc,qt));
+    }
+    if(fe<=1.) return length(mix(p,pn,fe));
+    ang+=da; p=pn;
+  }
+  return 1e9;
+}
+void main(){
+  float D=length(uCam); vec3 c=uCam/D;
+  float rq=length(aPos), qx=dot(aPos,c);
+  vec3 perp=aPos-qx*c; float qy=length(perp);
+  vec3 e=(qy>1e-4 ? perp/qy : uBasis[0])*uSide;   // the ray's plane is spanned by c and e
+  float psi=atan(qy,qx), want=uSide>0. ? psi : TAU-psi;
+  vec2 qt=vec2(qx,qy*uSide);
+  float lo=0., hi=3.13, ch=0., rc=0., tr=1., t2;
+  for(int it=0;it<22;it++){
+    ch=.5*(lo+hi); rc=shoot(ch,D,rq,want,c,e,qt,tr);
+    if(rc<rq) lo=ch; else hi=ch;
+  }
+  float ok=step(abs(rc-rq),.04*rq+.04);            // no ray found: draw nothing
+  // that ray as a photon arriving at the camera, then the direction the moving camera sees it come from
+  float kr=cos(ch), st=sin(ch), F=uU.z; vec3 kt=-st*e;
+  float E=sqrt(max(kr*kr+F*st*st,0.));
+  float kv= kr<0. ? st*st/(E-kr) : (E+kr)/F;
+  float om=F*kv*uU.x-kv*uU.y-kr*uU.x-dot(kt,uUt), a=1.-kv/(om*uU.x);
+  vec3 d=a*c+uUt*(1.-a)-kt/om;
+  float z=dot(d,uBasis[2]);
+  if(om<=0. || z<.03 || (F<=0. && kr>=0.)) ok=0.;
+  vec2 uv=uFocal*vec2(dot(d,uBasis[0]),dot(d,uBasis[1]))/max(z,.03);
+  gl_Position=vec4(uv.x*2.*uRes.y/uRes.x,uv.y*2.,0.,1.);
+  float L=max(distance(uCam,aPos),1.), area=1., al=atan(st*sqrt(max(F,0.)),kr); // al: the angle a hovering camera sees
+  if(uSide<0.){ // the second image is squeezed: across by sin(al)/sin(flat angle), along by the slope of the solve
+    float r2=shoot(ch+1e-4,D,rq,want,c,e,qt,t2);
+    if(r2<=0. || r2>1e8) r2=shoot(ch-1e-4,D,rq,want,c,e,qt,t2); // the band of angles that works is narrow
+    float along=(r2>0. && r2<1e8) ? clamp(L*1e-4/max(abs(r2-rc),1e-6),0.,1.) : 0.;
+    area=clamp(sin(al)*L/max(qy,aA.x),0.,4.)*along;
+  }
+  float px=4.*aA.x*uFocal*uRes.y/L*sqrt(area), fit=px;
+  // light from behind the hole is never seen inside the shadow, so the glow must not spill over its edge
+  if(uGrav>.5 && uU.w<.5 && (qx<0. || uSide<0.)) fit=max(min(px,2.*(tan(al)-tan(asin(min(.99,2.598*sqrt(F)/D))))*uFocal*uRes.y),1.5);
+  gl_PointSize=clamp(fit,3.,90.);
+  float w=min(4.,px*px/(fit*fit))*min(1.,fit*fit/9.), g=aA.w;
+  vCol=bb(aA.y*g)*aA.z*g*g*g*g*tr*w*ok;
+  if(ok<.5) gl_Position=vec4(2.,2.,2.,1.);
+}`;
+const BFS=`#version 300 es
+precision highp float; in vec3 vCol; uniform float uEnc; out vec4 o;
+void main(){ vec2 d=gl_PointCoord*2.-1.; float r2=dot(d,d); if(r2>1.) discard;
+  vec3 c=vCol*(exp(-3.5*r2)-.0302);
+  if(uEnc>.5) c=c/(1.+c);
+  o=vec4(c,1.); }`;
+
+function sh(type,src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+function prog(fs,vs){ const p=gl.createProgram(); gl.attachShader(p,sh(gl.VERTEX_SHADER,vs||VS)); gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u={}, n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS);
+  for(let i=0;i<n;i++){ const a=gl.getActiveUniform(p,i); u[a.name]=gl.getUniformLocation(p,a.name); }
+  return {p,u}; }
+let P; const tc=performance.now();
+try{ P={scene:prog(SCENE),down:prog(DOWN),up:prog(UP),fin:prog(FINAL),bits:prog(BFS,BVS)}; }
+catch(e){ console.error(e); $('fallback').style.display='grid'; return; }
+const vaoQuad=gl.createVertexArray(); gl.bindVertexArray(vaoQuad);
+// 32 x 32 x 32 random values for the shader's noise, from a fixed seed so every visit looks the same
+const noiseTex=gl.createTexture();
+{ const n=new Uint8Array(32768); let x=20261117; for(let i=0;i<n.length;i++){ x=(Math.imul(x,1664525)+1013904223)>>>0; n[i]=x>>>24; }
+  gl.bindTexture(gl.TEXTURE_3D,noiseTex); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+  gl.texImage3D(gl.TEXTURE_3D,0,gl.R8,32,32,32,0,gl.RED,gl.UNSIGNED_BYTE,n);
+  for(const w of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T,gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D,w,gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MAG_FILTER,gl.LINEAR); }
+const compileMs=Math.round(performance.now()-tc);
+
+/* ---------- render targets ---------- */
+function target(w,h){
+  const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  if(hdr) gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,w,h,0,gl.RGBA,gl.HALF_FLOAT,null);
+  else gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  const f=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+  return {t,f,w,h};
+}
+function free(T){ if(T){ gl.deleteTexture(T.t); gl.deleteFramebuffer(T.f); } }
+const LEVELS=6;
+let scene=null, downs=[], ups=[], scale=1, W=0, H=0, cssW=0, cssH=0, dpr=1;
+function build(){
+  dpr=Math.min(window.devicePixelRatio||1,1.5);
+  cssW=window.innerWidth; cssH=window.innerHeight;
+  canvas.width=Math.max(2,Math.round(cssW*dpr)); canvas.height=Math.max(2,Math.round(cssH*dpr));
+  guide.width=Math.round(cssW*dpr); guide.height=Math.round(cssH*dpr);
+  W=Math.max(2,Math.round(canvas.width*scale)); H=Math.max(2,Math.round(canvas.height*scale));
+  free(scene); downs.forEach(free); ups.forEach(free); downs=[]; ups=[];
+  scene=target(W,H);
+  let w=W,h=H;
+  for(let i=0;i<LEVELS;i++){ w=Math.max(2,w>>1); h=Math.max(2,h>>1); downs.push(target(w,h)); }
+  for(let i=0;i<LEVELS-1;i++){ ups.push(target(downs[i].w,downs[i].h)); }
+}
+build();
+let resizeT=0; window.addEventListener('resize',()=>{ clearTimeout(resizeT); resizeT=setTimeout(()=>{ cap=1; build(); },80); });
+
+/* ---------- camera and state ---------- */
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const S={ az:.9, el:.14, dist:reduce?30:36, tAz:.9, tEl:.14, tDist:30,
+          focal:1.7, grav:reduce?1:0, tGrav:1, dop:1, tDop:1, pred:0, tPred:0, fade:reduce?1:0, time:0, touched:false };
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+let dragging=false, lx=0, ly=0, lastInput=-1e9;
+let downX=0, downY=0, downT=0, moved=false, aim=null, holdT=0;
+canvas.addEventListener('pointerdown',e=>{ dragging=true; lx=downX=e.clientX; ly=downY=e.clientY; downT=performance.now(); moved=false; try{ canvas.setPointerCapture(e.pointerId); }catch(_){} canvas.classList.add('drag'); touch();
+  clearTimeout(holdT); if(ride) return; if(e.shiftKey) startAim(); else holdT=setTimeout(()=>{ if(dragging&&!moved&&!ride) startAim(); },300); });
+canvas.addEventListener('pointermove',e=>{ if(!dragging) return;
+  if(aim){ aim.x=e.clientX; aim.y=e.clientY; return; }
+  if(Math.hypot(e.clientX-downX,e.clientY-downY)>5){ moved=true; clearTimeout(holdT); }
+  if(ride){ const k=.0022/ride.zoom; ride.yaw-=(e.clientX-lx)*k; ride.pitch=clamp(ride.pitch+(e.clientY-ly)*k,-1.45,1.45); lx=e.clientX; ly=e.clientY; return; } // riding: look around
+  S.tAz-=(e.clientX-lx)*.0052; S.tEl=clamp(S.tEl+(e.clientY-ly)*.0042,-1.45,1.45); lx=e.clientX; ly=e.clientY; lastInput=performance.now(); });
+const end=()=>{ dragging=false; aim=null; clearTimeout(holdT); canvas.classList.remove('drag','aim'); };
+canvas.addEventListener('pointerup',e=>{ const a=aim, click=dragging&&!moved&&performance.now()-downT<500; end();
+  if(ride) return;
+  if(a && Math.hypot(a.x-a.x0,a.y-a.y0)>=8) fire(a); else if(a||click) launch(downX,downY); });
+canvas.addEventListener('pointercancel',end);
+canvas.addEventListener('wheel',e=>{ e.preventDefault(); if(ride){ ride.zoom=clamp(ride.zoom*Math.exp(-e.deltaY*.0011),.35,2.2); return; } S.tDist=clamp(S.tDist*Math.exp(e.deltaY*.0011),3,120); lastInput=performance.now(); touch(); },{passive:false});
+function touch(){ if(!S.touched){ S.touched=true; $('hint').classList.add('gone'); } lastInput=performance.now(); }
+
+function toggle(btn,fn){ const on=btn.getAttribute('aria-pressed')!=='true'; btn.setAttribute('aria-pressed',on); fn(on); touch(); }
+$('bG').onclick=()=>toggle($('bG'),on=>{ S.tGrav=on?1:0; if(!on&&ride) ride.leave=true; });
+$('bR').onclick=()=>{ if(ride) ride.leave=true; else startRide(); };
+$('bD').onclick=()=>toggle($('bD'),on=>S.tDop=on?1:0);
+$('bP').onclick=()=>toggle($('bP'),on=>S.tPred=on?1:0);
+$('bS').onclick=()=>toggle($('bS'),on=>sound(on));
+$('bN').onclick=()=>toggle($('bN'),on=>document.body.classList.toggle('readout',on));
+const controls=$('controls');
+$('bC').onclick=()=>{ const o=!controls.classList.contains('open'); controls.classList.toggle('open',o); $('bC').setAttribute('aria-expanded',o); };
+let launchSel='any', launchN=0;
+document.querySelectorAll('[data-launch]').forEach(b=>b.onclick=()=>{ launchSel=b.dataset.launch;
+  document.querySelectorAll('[data-launch]').forEach(x=>x.setAttribute('aria-pressed',x===b)); });
+$('bX').onclick=()=>{ bodies.length=0; bits.length=0; };
+const panel=$('panel');
+function openPanel(o){ panel.classList.toggle('open',o); $('bH').setAttribute('aria-expanded',o); if(o) $('close').focus(); else $('bH').focus(); }
+$('bH').onclick=()=>openPanel(!panel.classList.contains('open'));
+$('close').onclick=()=>openPanel(false);
+window.addEventListener('keydown',e=>{
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  const k=e.key.toLowerCase();
+  if(k==='g') $('bG').click(); else if(k==='d') $('bD').click(); else if(k==='p') $('bP').click();
+  else if(k==='s') $('bS').click(); else if(k==='x') $('bX').click(); else if(k==='r') $('bR').click(); else if(k==='escape'){ if(ride) ride.leave=true; else if(aim||dragging) end(); else if(panel.classList.contains('open')) openPanel(false); }
+});
+
+/* ---------- the same stepping rule in JavaScript, checked against exact values ---------- */
+function trace(b){ // ray arriving from far away with impact parameter b; returns {captured, deflection}
+  let px=-4000, py=b, vx=1, vy=0; const h2=b*b;
+  for(let i=0;i<20000;i++){
+    const r2=px*px+py*py, r=Math.sqrt(r2);
+    if(r<1) return {captured:true};
+    if(r>4000.5 && px*vx+py*vy>0) break;
+    const dt=Math.max(.035,.11*(r-.7));
+    px+=vx*dt*.5; py+=vy*dt*.5;
+    const m2=px*px+py*py, k=1.5*h2/(m2*m2*Math.sqrt(m2))*dt;
+    vx-=k*px; vy-=k*py; px+=vx*dt*.5; py+=vy*dt*.5;
+  }
+  return {captured:false, deflection:Math.abs(Math.atan2(vy,vx))};
+}
+(function selfCheck(){
+  let lo=2, hi=3.5; for(let i=0;i<40;i++){ const m=.5*(lo+hi); if(trace(m).captured) lo=m; else hi=m; }
+  $('cB').textContent=(.5*(lo+hi)).toFixed(4);
+  const b=20, d=trace(b).deflection*180/Math.PI;
+  $('cD').innerHTML=d.toFixed(3)+'&deg;'; // exact value 6.194 deg: fine-step RK4 on the orbit equation, see README
+})();
+
+/* ---------- sound: a small generative drone, starts only on request ---------- */
+let AC=null, master=null, filt=null, oscs=[];
+function sound(on){
+  if(on&&!AC){
+    AC=new (window.AudioContext||window.webkitAudioContext)();
+    master=AC.createGain(); master.gain.value=0;
+    filt=AC.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=520; filt.Q.value=.7;
+    const delay=AC.createDelay(2), fb=AC.createGain(), wet=AC.createGain();
+    delay.delayTime.value=.47; fb.gain.value=.55; wet.gain.value=.5;
+    filt.connect(master); filt.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(master);
+    master.connect(AC.destination);
+    [[41.2,'sine',.5],[61.74,'sine',.3],[82.41,'triangle',.16],[123.47,'sine',.1],[164.81,'sine',.06],[246.94,'sine',.045],[329.63,'sine',.03],[493.88,'sine',.012]].forEach(([f,type,gain],i)=>{
+      const o=AC.createOscillator(), g=AC.createGain(), l=AC.createOscillator(), lg=AC.createGain();
+      o.type=type; o.frequency.value=f; g.gain.value=gain;
+      l.frequency.value=.03+.021*i; lg.gain.value=gain*.6; l.connect(lg); lg.connect(g.gain);
+      o.connect(g); g.connect(filt); o.start(); l.start(); oscs.push({o,f});
+    });
+    // disk hiss: filtered noise
+    const len=AC.sampleRate*2, buf=AC.createBuffer(1,len,AC.sampleRate), ch=buf.getChannelData(0);
+    for(let i=0;i<len;i++) ch[i]=Math.random()*2-1;
+    const ns=AC.createBufferSource(); ns.buffer=buf; ns.loop=true;
+    const nf=AC.createBiquadFilter(); nf.type='bandpass'; nf.frequency.value=900; nf.Q.value=.6;
+    const ng=AC.createGain(); ng.gain.value=.012; ns.connect(nf); nf.connect(ng); ng.connect(filt); ns.start();
+  }
+  if(!AC) return;
+  if(on) AC.resume();
+  master.gain.cancelScheduledValues(AC.currentTime);
+  master.gain.setTargetAtTime(on?.5:0,AC.currentTime,on?1.2:.25);
+}
+function soundTick(){
+  if(!AC||AC.state!=='running') return;
+  const D=ride?Math.hypot(ride.b.p[0],ride.b.p[1],ride.b.p[2]):S.dist, near=clamp((60-D)/58,0,1);
+  filt.frequency.setTargetAtTime(520+2400*near*near*near,AC.currentTime,.3);
+  const clock=ride?clamp((1-1/D)/ride.b.E,.06,1):Math.sqrt(1-1/S.dist), bend=.35+.65*S.grav; // pitch falls with the camera's clock rate
+  oscs.forEach(x=>x.o.frequency.setTargetAtTime(x.f*clock*bend,AC.currentTime,.4));
+}
+
+/* ---------- frame ---------- */
+function pass(pr,T,w,h){ gl.bindFramebuffer(gl.FRAMEBUFFER,T?T.f:null); gl.viewport(0,0,w,h); gl.useProgram(pr.p); }
+function tex(unit,t,loc){ gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t); gl.uniform1i(loc,unit); }
+const enc=hdr?0:1;
+let last=performance.now(), acc=0, frames=0, slow=0, t0=0, introDone=reduce, cap=1, skip=2, nFrame=0, timed=false;
+window.__t={compileMs}; window.__S=S; window.__load=0;
+document.addEventListener('visibilitychange',()=>{ skip=3; slow=0; });
+const ease=(cur,to,rate,dt)=>cur+(to-cur)*(1-Math.exp(-rate*dt));
+
+const dot3=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function orbitCamera(){
+  const el=Math.abs(S.el)<.012?(S.el<0?-.012:.012):S.el;
+  const ce=Math.cos(el), cam=[S.dist*ce*Math.cos(S.az), S.dist*Math.sin(el), S.dist*ce*Math.sin(S.az)];
+  const f=cam.map(x=>-x/S.dist);
+  let r=[-f[2],0,f[0]]; const rl=Math.hypot(r[0],r[2]); r=[r[0]/rl,0,r[2]/rl];
+  const u=[r[1]*f[2]-r[2]*f[1], r[2]*f[0]-r[0]*f[2], r[0]*f[1]-r[1]*f[0]];
+  return {cam,r,u,f,focal:S.focal,k:0};
+}
+// The camera as an observer: where it is, how it moves (rd: dr/dtau, ut: sideways velocity) and the
+// time part of its four-velocity in ingoing Eddington-Finkelstein coordinates, uv, finite at the horizon.
+function observer(C,rd,ut){
+  C.D=Math.hypot(C.cam[0],C.cam[1],C.cam[2]); C.rh=C.cam.map(x=>x/C.D); C.F=1-S.grav/C.D;
+  const q=dot3(ut,C.rh); C.ut=ut.map((x,i)=>x-C.rh[i]*q); C.rd=rd;
+  const w=1+dot3(C.ut,C.ut); C.E=Math.sqrt(rd*rd+C.F*w); C.uv=w/(C.E-rd);
+  return C;
+}
+function camera(){ return ride ? rideCamera() : observer(orbitCamera(),0,[0,0,0]); }
+let ride=null;
+
+/* ---------- launched objects: free fall, drag from the disk, and tides ---------- */
+/*<phys>*/
+const KINDS=['meteor','planet','star','rocket'], RADIUS=[.22,.55,.85,.13];
+const TIDE=[0,4.1,6.5,0];   // radius where tides pull it apart, in r_s. 0: its own strength holds it together
+const DRAG=[4,5,9,4,2.5];   // time for the disk to drag it to the gas speed, in r_s/c. Last entry: debris
+const NBITS=[0,210,340,0], SLAB=.35, INFLOW=.15, HEAT=70, MAXP=900;
+const bodies=[], bits=[];
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const cross3=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+function orbit(b){ // angular momentum and energy per unit mass, from position and velocity
+  const p=b.p, v=b.v, r=Math.hypot(p[0],p[1],p[2]), hv=cross3(p,v), rd=(p[0]*v[0]+p[1]*v[1]+p[2]*v[2])/r;
+  b.h2=hv[0]*hv[0]+hv[1]*hv[1]+hv[2]*hv[2]; b.E=Math.sqrt(rd*rd+(1-1/r)*(1+b.h2/(r*r)));
+}
+function spawn(kind,p,v){
+  const b={kind,p,v,age:0,g:1,seed:Math.random(),heat:0,dv:0}; orbit(b); bodies.push(b);
+  const slots=()=>bodies.reduce((n,b)=>n+(b.kind===3?2:1),0);
+  while(slots()>6) bodies.shift();
+  return b;
+}
+function toss(kind,P,alt){ // a plain click: prograde with the disk, at a random fraction of the circular-orbit speed
+  const R=Math.hypot(P[0],P[1],P[2]), Rc=clamp(R,Math.max(4.5,TIDE[kind]+1.2),13), rh=P.map(x=>x/R);
+  let th=cross3([0,1,0],rh), tl=Math.hypot(th[0],th[1],th[2]);
+  if(tl<.2){ th=cross3(alt,rh); tl=Math.hypot(th[0],th[1],th[2]); }
+  const [kt,kr]=[[rnd(.35,.75),rnd(.2,.6)],[rnd(.6,.95),rnd(0,.12)],[rnd(.7,.98),rnd(0,.15)],[rnd(1.25,1.5),rnd(.3,.6)]][kind];
+  const vc=Math.sqrt(.5/(Rc-1.5));
+  return spawn(kind,rh.map(x=>x*Rc),[0,1,2].map(i=>th[i]/tl*kt*vc-rh[i]*kr*vc));
+}
+// One thing, advanced by dtc of far-away time (units of r_s/c) in n leapfrog steps of its own time.
+function advance(b,dtc,n,tau){
+  const p=b.p, v=b.v; let r=Math.hypot(p[0],p[1],p[2]); b.dv=0;
+  for(let i=0;i<n;i++){
+    // its own clock runs slow by (1 - r_s/r)/E against far-away time
+    const dT=b.own ? dtc/n : dtc/n*Math.max(0,1+((1-1/r)/b.E-1)*S.grav);
+    p[0]+=v[0]*dT*.5; p[1]+=v[1]*dT*.5; p[2]+=v[2]*dT*.5;
+    const m2=p[0]*p[0]+p[1]*p[1]+p[2]*p[2], m=Math.sqrt(m2), a=-(.5/(m2*m)+1.5*b.h2/(m2*m2*m))*S.grav*dT;
+    v[0]+=a*p[0]; v[1]+=a*p[1]; v[2]+=a*p[2];
+    p[0]+=v[0]*dT*.5; p[1]+=v[1]*dT*.5; p[2]+=v[2]*dT*.5;
+    r=Math.hypot(p[0],p[1],p[2]); if(r<(b.own?.12:1.005)) break;
+    // inside the disk the gas drags it toward the gas velocity: a circular orbit with a slow inward drift
+    const q2=p[0]*p[0]+p[2]*p[2];
+    if(Math.abs(p[1])<SLAB && q2>RIN*RIN && q2<ROUT*ROUT){
+      const q=Math.sqrt(q2), vc=1/Math.sqrt(2*q-3), k=(1-Math.exp(-dT/tau))*S.grav;
+      const dx=(p[2]-INFLOW*p[0])/q*vc-v[0], dy=-v[1], dz=(-p[0]-INFLOW*p[2])/q*vc-v[2];
+      b.dv=Math.hypot(dx,dy,dz);
+      v[0]+=dx*k; v[1]+=dy*k; v[2]+=dz*k; orbit(b);
+    }
+  }
+  b.g=1+(clamp((1-1/r)/b.E,0,1.2)-1)*S.grav;
+  return r;
+}
+function addBit(p,v,T,rad,lum,life){
+  const f={p,v,T,rad,lum,life,age:0,hot:0,g:1,dv:0}; orbit(f); bits.push(f);
+  if(bits.length>MAXP) bits.splice(0,bits.length-MAXP);
+}
+function shred(b){ // tides: the body becomes pieces that keep its velocity but start at different points across it
+  const R=RADIUS[b.kind], star=b.kind===2;
+  for(let i=0;i<NBITS[b.kind];i++){
+    let s; do{ s=[rnd(-1,1),rnd(-1,1),rnd(-1,1)]; }while(s[0]*s[0]+s[1]*s[1]+s[2]*s[2]>1);
+    const z=rnd(.55,1.9); // a few big faint puffs, many small bright ones
+    addBit(b.p.map((x,j)=>x+s[j]*R),b.v.slice(),star?5800*rnd(.8,1.25):rnd(2200,4200),(star?.15:.11)*z,(star?1:.85)/(z*z),rnd(170,320));
+  }
+}
+function spark(b){ // disk gas heated where something ploughs through it
+  const R=RADIUS[b.kind], p=[b.p[0]+rnd(-R,R),b.p[1]*.4+rnd(-.08,.08),b.p[2]+rnd(-R,R)];
+  const q=Math.hypot(p[0],p[2]), vc=1/Math.sqrt(2*Math.max(q,RIN)-3);
+  const z=rnd(.6,1.8);
+  addBit(p,[p[2]/q*vc,rnd(-.01,.01),-p[0]/q*vc],rnd(5500,9500),.08*z,.5/(z*z),rnd(25,60));
+}
+function stepThings(dtc,dtReal){
+  for(let j=bodies.length-1;j>=0;j--){ const b=bodies[j]; b.age+=dtReal;
+    const r=advance(b,dtc,6,DRAG[b.kind]);
+    if(b.dv>.03){ b.heat+=b.dv*b.dv*dtc*HEAT; while(b.heat>1){ b.heat-=1; spark(b); } }
+    if(TIDE[b.kind] && r<TIDE[b.kind] && b.age>.6 && S.grav>.5){ shred(b); bodies.splice(j,1); continue; }
+    if(r<1.02 || b.g<.05 || r>150 || b.age>300) bodies.splice(j,1);
+  }
+  for(let j=bits.length-1;j>=0;j--){ const f=bits[j]; f.age+=dtc;
+    const r=advance(f,dtc,3,DRAG[4]);
+    f.hot=Math.max(f.hot*Math.exp(-dtc/14),Math.min(1,f.dv*2.5));
+    if(r<1.02 || f.g<.04 || r>70 || f.age>f.life) bits.splice(j,1);
+  }
+}
+/*</phys>*/
+// The camera ray that leaves at angle al from the hole: the radius where it has turned through "want".
+// 0: it fell in first. Infinity: it left first. Same stepping rule as the shaders.
+function shoot(al,D,want,rq){
+  const lapse=1+(Math.sqrt(1-1/D)-1)*S.grav, sa=Math.sin(al), h2=D*D*sa*sa;
+  let px=D, py=0, vx=-Math.cos(al)*lapse, vy=sa, ang=0;
+  for(let i=0;i<500;i++){
+    const r=Math.hypot(px,py);
+    if(r<1) return 0;
+    if(px*vx+py*vy>0 && r>Math.min(rq*1.05+.5,600)) return Infinity;
+    const dt=Math.max(.035,.11*(r-.7)), mx=px+vx*dt*.5, my=py+vy*dt*.5, m2=mx*mx+my*my, k=1.5*h2*S.grav/(m2*m2*Math.sqrt(m2))*dt;
+    vx-=k*mx; vy-=k*my;
+    const nx=mx+vx*dt*.5, ny=my+vy*dt*.5, da=Math.atan2(px*ny-py*nx,px*nx+py*ny);
+    if(ang+da>=want){ const f=(want-ang)/Math.max(da,1e-9); return Math.hypot(px+(nx-px)*f,py+(ny-py)*f); }
+    ang+=da; px=nx; py=ny;
+  }
+  return Infinity;
+}
+// where a point in space appears on screen (CSS pixels), by the light path that reaches the camera the short way round
+function project(Q,C){
+  const D=S.dist, c=C.cam.map(x=>x/D), rq=Math.hypot(Q[0],Q[1],Q[2]), qx=Q[0]*c[0]+Q[1]*c[1]+Q[2]*c[2];
+  let e=[0,1,2].map(i=>Q[i]-qx*c[i]); const qy=Math.hypot(e[0],e[1],e[2]);
+  e=qy>1e-5?e.map(x=>x/qy):C.r;
+  const psi=Math.atan2(qy,qx); let lo=0, hi=1.5, al=0, rc=0;
+  for(let i=0;i<16;i++){ al=.5*(lo+hi); rc=shoot(al,D,psi,rq); if(rc<rq) lo=al; else hi=al; }
+  if(Math.abs(rc-rq)>.04*rq+.04) return null;
+  const t=S.focal*Math.tan(al)*cssH;
+  return [cssW/2+t*(e[0]*C.r[0]+e[1]*C.r[1]+e[2]*C.r[2]), cssH/2-t*(e[0]*C.u[0]+e[1]*C.u[1]+e[2]*C.u[2])];
+}
+// the point seen under the cursor, on the plane through the hole that faces the camera
+function pick(cx,cy,C){
+  const x=(cx-cssW/2)/cssH, y=-(cy-cssH/2)/cssH, s=Math.hypot(x,y);
+  const e=s>1e-4?[0,1,2].map(i=>(C.r[i]*x+C.u[i]*y)/s):C.r.slice();
+  const R=shoot(Math.atan(s/S.focal),S.dist,Math.PI/2,Infinity);
+  return e.map(v=>v*clamp(R,2.2,40)); // a click on the shadow itself starts just outside it
+}
+const nextKind=()=>KINDS.indexOf(launchSel==='any'?KINDS[launchN%4]:launchSel);
+function launch(cx,cy){ const C=camera(); toss(nextKind(),pick(cx,cy,C),C.f); launchN++; }
+
+/* ---------- aiming: hold, then drag to set direction and speed ---------- */
+const SPEED=.55; // a drag of this fraction of the window height means the speed of light
+function startAim(){ const C=camera(); aim={x0:downX,y0:downY,x:downX,y:downY,kind:nextKind(),P:pick(downX,downY,C)}; canvas.classList.add('aim'); }
+function aimVelocity(a,C){ // the drag as a speed measured by someone hovering at that spot, turned into the stepping velocity
+  const dx=a.x-a.x0, dy=-(a.y-a.y0), len=Math.hypot(dx,dy), beta=Math.min(.97,len/(SPEED*cssH));
+  const w=[0,1,2].map(i=>(C.r[i]*dx+C.u[i]*dy)/(len||1)), R=Math.hypot(a.P[0],a.P[1],a.P[2]), rh=a.P.map(x=>x/R);
+  const wr=w[0]*rh[0]+w[1]*rh[1]+w[2]*rh[2], gam=1/Math.sqrt(1-beta*beta);
+  return {beta, v:[0,1,2].map(i=>gam*beta*((w[i]-wr*rh[i])+wr*Math.sqrt(1-1/R)*rh[i]))};
+}
+function fire(a){ spawn(a.kind,a.P.slice(),aimVelocity(a,camera()).v); launchN++; }
+// the path the launch would take, from the same stepper the live object uses
+function predict(kind,P,v){
+  const b={kind,p:P.slice(),v:v.slice(),g:1,dv:0}, pts=[P.slice()]; orbit(b);
+  let fate='', rt=TIDE[kind]*(S.grav>.5?1:0);
+  for(let i=0;i<1500 && !fate;i++){
+    const r=advance(b,5.5/30,6,DRAG[kind]);
+    if(i%20===19 || i<20&&i%5===4) pts.push(b.p.slice());
+    if(rt && r<rt && i>18) fate='torn apart'; else if(r<1.03||b.g<.05) fate='falls in'; else if(r>48) fate=b.E>=1?'escapes':'';
+    if(r>48) break;
+  }
+  pts.push(b.p.slice());
+  return {pts,fate};
+}
+function drawAim(){
+  if(!aim) return;
+  const C=camera(), {beta,v}=aimVelocity(aim,C), d=dpr, live=Math.hypot(aim.x-aim.x0,aim.y-aim.y0)>=8;
+  const x0=aim.x0*d, y0=aim.y0*d, R=Math.hypot(aim.P[0],aim.P[1],aim.P[2]);
+  g2.lineWidth=1.25*d; g2.font=(11.5*d)+'px ui-monospace,Consolas,Menlo,monospace'; g2.textBaseline='middle';
+  // dashed ring: drag this far, sideways, for a circular orbit
+  if(R>=3 && S.grav>.5){ const rc=SPEED*cssH*d/Math.sqrt(2*(R-1));
+    g2.strokeStyle='rgba(244,236,221,.3)'; g2.setLineDash([3*d,5*d]); g2.beginPath(); g2.arc(x0,y0,rc,0,Math.PI*2); g2.stroke(); g2.setLineDash([]);
+    g2.fillStyle='rgba(244,236,221,.5)'; g2.fillText('orbit speed',x0+rc*.72+6*d,y0+rc*.72+6*d); }
+  g2.strokeStyle='#ffb469'; g2.beginPath(); g2.arc(x0,y0,7*d,0,Math.PI*2); g2.stroke();
+  if(!live){ g2.fillStyle='#ffb469'; g2.fillText('drag to set direction and speed',x0+16*d,y0); return; }
+  const P=predict(aim.kind,aim.P,v); let prev=null, n=0;
+  g2.strokeStyle='#8fd3ff';
+  for(const q of P.pts){ const s=project(q,C), k=n++/P.pts.length;
+    if(s && prev && Math.hypot(s[0]-prev[0],s[1]-prev[1])<160){ g2.globalAlpha=.9-.6*k; g2.beginPath(); g2.moveTo(prev[0]*d,prev[1]*d); g2.lineTo(s[0]*d,s[1]*d); g2.stroke(); }
+    if(s) prev=s; }
+  g2.globalAlpha=1;
+  if(P.fate && prev){ g2.fillStyle='#bfe6ff'; g2.beginPath(); g2.arc(prev[0]*d,prev[1]*d,3*d,0,Math.PI*2); g2.fill(); g2.fillText(P.fate,prev[0]*d+9*d,prev[1]*d-9*d); }
+  const x1=aim.x*d, y1=aim.y*d, an=Math.atan2(y1-y0,x1-x0);
+  g2.strokeStyle='#ffb469'; g2.fillStyle='#ffb469';
+  g2.beginPath(); g2.moveTo(x0,y0); g2.lineTo(x1,y1); g2.stroke();
+  g2.beginPath(); g2.moveTo(x1,y1); g2.lineTo(x1-10*d*Math.cos(an-.4),y1-10*d*Math.sin(an-.4)); g2.lineTo(x1-10*d*Math.cos(an+.4),y1-10*d*Math.sin(an+.4)); g2.closePath(); g2.fill();
+  g2.fillText(KINDS[aim.kind]+'  '+beta.toFixed(2)+' c',x1+14*d,y1+14*d);
+}
+window.__aim={project,pick,predict,shoot,aimVelocity,start:(x,y)=>{ downX=x; downY=y; startAim(); },set:(x,y)=>{ aim.x=x; aim.y=y; },fire:()=>{ const a=aim; end(); fire(a); },cam:camera};
+/* ---------- riding along: the camera falls with an object ---------- */
+const unit3=a=>{ const l=Math.hypot(a[0],a[1],a[2])||1; return a.map(x=>x/l); };
+let veil=1, noteT=0;
+function note(text,sec){ const n=$('note'); clearTimeout(noteT); n.textContent=text; n.classList.toggle('on',!!text); if(text&&sec) noteT=setTimeout(()=>n.classList.remove('on'),sec*1000); }
+function startRide(){
+  if(ride) return; end(); touch(); introDone=true;
+  let b=bodies.pop(); // the camera takes the place of the last thing launched
+  if(!b){ // nothing launched: start on a path that crosses the disk and falls in
+    const C=orbitCamera(), P=[0,1,2].map(i=>C.r[i]*10.5+C.u[i]*2-C.f[i]*2), R=Math.hypot(P[0],P[1],P[2]), rh=P.map(x=>x/R);
+    const th=unit3(cross3([0,1,0],rh)), vc=Math.sqrt(.5/(R-1.5));
+    b={p:P,v:[0,1,2].map(i=>th[i]*.55*vc-rh[i]*.2*vc),dv:0}; orbit(b); }
+  b.own=true;
+  ride={b,k:reduce?1:0,yaw:0,pitch:0,zoom:.62,tau:0,far:0,rate:1,leave:false,up:[0,1,0]};
+  S.tGrav=1; $('bG').setAttribute('aria-pressed',true); $('bR').setAttribute('aria-pressed',true);
+  document.body.classList.add('riding'); note('Drag to look around  ·  Scroll to zoom  ·  Esc to leave',7);
+}
+function stopRide(text){ ride=null; veil=0; $('bR').setAttribute('aria-pressed',false); document.body.classList.remove('riding'); note(text||'',text?9:0); }
+function stepRide(dt){ // returns the far-away time to move the rest of the scene by
+  const b=ride.b; let r=Math.hypot(b.p[0],b.p[1],b.p[2]);
+  ride.k=Math.min(1,ride.k+dt/1.8);
+  // playback slows as the fall speeds up, so the last part can be watched
+  ride.rate=clamp(.2*Math.pow(r,r>1?1.5:2.5),.004,5.5)/5.5;
+  const dtau=dt*5.5*ride.rate, F=1-1/r, slow=F>0?b.E/F:Infinity;
+  r=advance(b,dtau,8,DRAG[0]); ride.tau+=dtau; ride.far+=dtau*slow;
+  if(ride.leave) veil-=dt/.3; else veil=Math.min(veil+dt/.6,clamp((r-.16)/.2,0,1));
+  if(r<=.16) stopRide('The ride stops just short of the centre. Seen from far away you never reached the horizon. You reddened and faded just outside it.');
+  else if(veil<=0 || r>70) stopRide();
+  return dtau*Math.min(3,slow);
+}
+function rideCamera(){
+  const O=orbitCamera(), b=ride.b, k=ride.k*ride.k*(3-2*ride.k);
+  const R=Math.hypot(b.p[0],b.p[1],b.p[2]), rh=b.p.map(x=>x/R), rd=dot3(b.v,rh);
+  // the rider's view: facing the middle of the hole's shadow as the rider sees it, with up as near
+  // the disk's axis as it can be, then turned by the drag
+  const me=observer({cam:b.p.slice()},rd,b.v);
+  // (the edge is a circle on the rider's sky; the sum of cross products of neighbouring points lies along its axis)
+  const ed=edgeDirs(me,16); let f0=[0,0,0];
+  for(let i=0;i<ed.length;i++){ const c=cross3(ed[i],ed[(i+1)%ed.length]); f0=f0.map((x,j)=>x-c[j]); }
+  f0=ed.length>2?unit3(f0):rh.map(x=>-x);
+  // once the shadow is too wide to fit, turn away from its middle to keep its edge in view,
+  // toward the side where the light is shifted up the most and the sky is brightest
+  const wide=ed.length>2?Math.acos(clamp(dot3(f0,ed[0]),-1,1)):0, turn=window.__noTurn?0:Math.max(0,wide-.42);
+  if(turn>0){ let sd=cross3(f0,[0,1,0]).map(x=>x*1e-3);
+    for(const d of ed){ const q=dot3(d,f0), w=d.g*d.g; sd=sd.map((x,i)=>x+w*(d[i]-f0[i]*q)); }
+    sd=unit3(sd); f0=f0.map((x,i)=>Math.cos(turn)*x+Math.sin(turn)*sd[i]); }
+  // up starts along the disk's axis and is carried along from frame to frame, so the view never flips passing over a pole
+  const qu=dot3(ride.up,f0); let up=ride.up.map((x,i)=>x-f0[i]*qu);
+  if(Math.hypot(up[0],up[1],up[2])<.05) up=O.u.map((x,i)=>x-f0[i]*dot3(O.u,f0));
+  up=unit3(up); ride.up=up; const r0=cross3(f0,up);
+  const cy=Math.cos(ride.yaw), sy=Math.sin(ride.yaw), cp=Math.cos(ride.pitch), sp=Math.sin(ride.pitch);
+  const f=[0,1,2].map(i=>cp*(cy*f0[i]+sy*r0[i])+sp*up[i]), r=[0,1,2].map(i=>cy*r0[i]-sy*f0[i]), u=cross3(r,f);
+  if(k>=1) return Object.assign(me,{r,u,f,focal:ride.zoom,k:1});
+  // flying in: from the hovering camera to the rider, picking up its motion on the way
+  const a=O.cam.map(x=>x/S.dist), ang=Math.acos(clamp(dot3(a,rh),-1,1)), sn=Math.sin(ang);
+  const dir=sn<1e-3?a:unit3(a.map((x,i)=>(Math.sin((1-k)*ang)*x+Math.sin(k*ang)*rh[i])/sn));
+  const D=Math.exp(Math.log(S.dist)*(1-k)+Math.log(R)*k);
+  const fb=unit3(O.f.map((x,i)=>x+(f[i]-x)*k+1e-3*O.r[i])), um=O.u.map((x,i)=>x+(u[i]-x)*k), q=dot3(um,fb);
+  const ub=unit3(um.map((x,i)=>x-fb[i]*q));
+  return observer({cam:dir.map(x=>x*D),r:cross3(fb,ub),u:ub,f:fb,focal:O.focal+(ride.zoom-O.focal)*k,k:Math.max(k,.001)},rd*k,b.v.map(x=>x*k));
+}
+// the direction, in the camera's own frame, from which it sees a photon that reaches it with radial momentum kr and sideways momentum kt
+function seenDir(C,kr,kt){
+  const k2=dot3(kt,kt), E=Math.sqrt(Math.max(kr*kr+C.F*k2,0)), kv=kr<0?k2/(E-kr):(E+kr)/C.F;
+  const om=C.F*kv*C.uv-kv*C.rd-kr*C.uv-dot3(kt,C.ut), a=1-kv/(om*C.uv);
+  if(!(om>0)) return null;
+  const d=[0,1,2].map(i=>a*C.rh[i]+C.ut[i]*(1-a)-kt[i]/om); d.g=om/E; // g: how far its frequency is shifted up
+  return d;
+}
+// the exact shadow edge for a moving camera: photons with the critical impact parameter, sqrt(27)/2 r_s
+function edgeDirs(C,n){
+  const bc=2.5980762, kr=(C.D>1.5?1:-1)*Math.sqrt(Math.max(0,1-C.F*bc*bc/(C.D*C.D))), out=[];
+  let ta=cross3(C.rh,[0,1,0]); if(Math.hypot(ta[0],ta[1],ta[2])<.1) ta=cross3(C.rh,[1,0,0]); ta=unit3(ta); const tb=cross3(C.rh,ta);
+  for(let i=0;i<n;i++){ const ps=i/n*Math.PI*2, d=seenDir(C,kr,ta.map((x,j)=>(x*Math.cos(ps)+tb[j]*Math.sin(ps))*bc/C.D)); if(d) out.push(d); }
+  return out;
+}
+function rideGuide(){
+  const C=camera(), ds=edgeDirs(C,120); ds.push(ds[0]);
+  g2.globalAlpha=S.pred*veil; g2.lineWidth=1.25*dpr; g2.strokeStyle='#8fd3ff'; g2.setLineDash([5*dpr,6*dpr]); g2.beginPath();
+  let pen=false, lab=null;
+  for(const d of ds){ const z=dot3(d,C.f); if(z<.05){ pen=false; continue; }
+    const x=cssW/2+C.focal*dot3(d,C.r)/z*cssH, y=cssH/2-C.focal*dot3(d,C.u)/z*cssH;
+    if(pen) g2.lineTo(x*dpr,y*dpr); else g2.moveTo(x*dpr,y*dpr); pen=true;
+    if(!lab && x>40 && x<cssW-330 && y>40 && y<cssH-40) lab=[x,y]; }
+  g2.stroke(); g2.setLineDash([]);
+  if(lab){ g2.fillStyle='#bfe6ff'; g2.font=(11.5*dpr)+'px ui-monospace,Consolas,Menlo,monospace'; g2.textBaseline='middle';
+    g2.fillText('shadow edge predicted by general relativity',(lab[0]+14)*dpr,(lab[1]-12)*dpr); }
+  g2.globalAlpha=1;
+}
+function rideReadout(){
+  const b=ride.b, r=Math.hypot(b.p[0],b.p[1],b.p[2]), F=1-1/r;
+  $('hR').textContent=r.toFixed(2);
+  $('hV').textContent=F>0?Math.sqrt(Math.max(0,1-F/(b.E*b.E))).toFixed(2)+' c past a hoverer':'nothing can hover here';
+  $('hT').textContent=ride.tau.toFixed(1);
+  $('hTf').textContent=F>0&&ride.far<1e5?ride.far.toFixed(ride.far<1000?1:0)+' rₛ/c':(F>0?'running away':'has no value in here');
+  $('hP').textContent=(ride.rate*100).toFixed(ride.rate<.1?1:0)+'% of normal';
+}
+window.__ride={start:startRide,get:()=>ride,edgeDirs,seenDir,put:(p,v,yaw,pitch,zoom)=>{ if(!ride) startRide(); const b={p,v,dv:0,own:true}; orbit(b); ride.b=b; ride.k=1; ride.up=[0,1,0]; ride.yaw=yaw||0; ride.pitch=pitch||0; if(zoom) ride.zoom=zoom; veil=1; }};
+const uB=new Float32Array(24), uBA=new Float32Array(24), uBG=new Float32Array(24);
+window.__bodies=bodies; window.__bits=bits; window.__launch=launch; window.__phys={spawn,toss,addBit,shred,orbit};
+function bodyUniforms(U){
+  let n=0;
+  const put=(c,R,ax,kind,b)=>{ uB.set([c[0],c[1],c[2],R],n*4); uBA.set([ax[0],ax[1],ax[2],kind],n*4); uBG.set([b.g,b.seed,R+Math.hypot(ax[0],ax[1],ax[2]),0],n*4); n++; };
+  for(const b of bodies){ if(n>=6) break;
+    const k=Math.min(1,b.age/.4), sc=k*k*(3-2*k); // pops in
+    if(b.kind===3){ const vl=Math.hypot(...b.v)||1, d=b.v.map(x=>x/vl);
+      put(b.p,.16*sc,d.map(x=>x*.5*sc),3,b);
+      if(n<6) put(b.p.map((x,i)=>x-d[i]*.9*sc),.105*sc,d.map(x=>x*.25*sc),4,b);
+    } else { // tides stretch it along the line to the hole before it comes apart
+      const R=RADIUS[b.kind]*sc, rt=TIDE[b.kind], r=Math.hypot(...b.p), st=rt?clamp((1.5*rt-r)/(.5*rt),0,1)*S.grav:0;
+      put(b.p,R*(1-.28*st),b.p.map(x=>x/r*R*.85*st),b.kind,b);
+    }
+  }
+  gl.uniform1i(U.uNB,n); gl.uniform4fv(U['uB[0]'],uB); gl.uniform4fv(U['uBA[0]'],uBA); gl.uniform4fv(U['uBG[0]'],uBG);
+}
+const bitData=new Float32Array(MAXP*7), bitBuf=gl.createBuffer(), vaoBits=gl.createVertexArray();
+gl.bindVertexArray(vaoBits); gl.bindBuffer(gl.ARRAY_BUFFER,bitBuf); gl.bufferData(gl.ARRAY_BUFFER,bitData.byteLength,gl.DYNAMIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,28,0);
+gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,4,gl.FLOAT,false,28,12);
+gl.bindVertexArray(vaoQuad);
+function drawBits(){ // added onto the scene the tracer has just drawn
+  const n=Math.min(bits.length,MAXP); if(!n) return;
+  for(let i=0;i<n;i++){ const f=bits[i], o=i*7;
+    bitData[o]=f.p[0]; bitData[o+1]=f.p[1]; bitData[o+2]=f.p[2]; bitData[o+3]=f.rad;
+    bitData[o+4]=f.T+5200*f.hot; bitData[o+5]=f.lum*clamp((f.life-f.age)/30,0,1)*(1+3*f.hot); bitData[o+6]=f.g; }
+  const C=camera(), {cam,r,u,f}=C, U=P.bits.u;
+  gl.bindFramebuffer(gl.FRAMEBUFFER,scene.f); gl.viewport(0,0,W,H); gl.useProgram(P.bits.p);
+  gl.uniform3fv(U.uCam,cam); gl.uniformMatrix3fv(U.uBasis,false,[...r,...u,...f]); gl.uniform2f(U.uRes,W,H);
+  gl.uniform1f(U.uFocal,C.focal); gl.uniform1f(U.uGrav,S.grav); gl.uniform4f(U.uU,C.uv,C.rd,C.F,C.k); gl.uniform3fv(U.uUt,C.ut); gl.uniform1f(U.uEnc,enc);
+  gl.bindVertexArray(vaoBits); gl.bindBuffer(gl.ARRAY_BUFFER,bitBuf); gl.bufferSubData(gl.ARRAY_BUFFER,0,bitData,0,n*7);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE);
+  gl.uniform1f(U.uSide,1); gl.drawArrays(gl.POINTS,0,n);
+  gl.uniform1f(U.uSide,-1); gl.drawArrays(gl.POINTS,0,n);
+  gl.disable(gl.BLEND); gl.bindVertexArray(vaoQuad);
+}
+
+function sceneUniforms(){
+  const C=camera(), {cam,r,u,f}=C;
+  const U=P.scene.u; pass(P.scene,scene,W,H);
+  gl.uniform2f(U.uRes,W,H); gl.uniform3fv(U.uCam,cam); gl.uniformMatrix3fv(U.uBasis,false,[...r,...u,...f]);
+  gl.uniform1f(U.uFocal,C.focal); gl.uniform1f(U.uTime,S.time); gl.uniform1f(U.uGrav,S.grav); gl.uniform1f(U.uDop,S.dop);
+  gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_3D,noiseTex); gl.uniform1i(U.uNoise,3);
+  gl.uniform4f(U.uU,C.uv,C.rd,C.F,C.k); gl.uniform3fv(U.uUt,C.ut); gl.uniform1f(U.uEsc,Math.max(34,C.D*1.25)); gl.uniform1f(U.uEnc,enc);
+  bodyUniforms(U);
+}
+
+function frame(now){ requestAnimationFrame(frame); tick(now); }
+// test only: advance the page by a number of seconds without waiting for the browser to schedule frames
+window.__run=function(sec,fps){ fps=fps||60; let t=last; for(let i=0;i<sec*fps;i++){ t+=1000/fps; tick(t); } };
+function tick(now){
+  if(!t0){ t0=now; window.__t.first=Math.round(now); }
+  let dt=(now-last)/1000; if(dt<0) return; last=now; if(dt>.25) dt=.25;
+  const introT=(now-t0)/1000;
+  let dtc=dt*5.5;
+  if(ride && !window.__freeze) dtc=stepRide(dt); else if(!ride) veil=Math.min(1,veil+dt/.6);
+  S.time+=dtc; if(!window.__freeze) stepThings(dtc,dt);
+  if(ride) rideReadout();
+  if(!reduce && !dragging && now-lastInput>2500) S.tAz+=dt*.022;
+  S.az=ease(S.az,S.tAz,7,dt); S.el=ease(S.el,S.tEl,7,dt);
+  S.dist=ease(S.dist,S.tDist,S.touched?5:.9,dt);
+  if(!window.__lockFocal){ const k=clamp((S.dist-3)/15,0,1); S.focal=.55+1.15*k*k*(3-2*k); } // the lens widens as you approach
+  // opens in flat space, then gravity switches on
+  if(!introDone && (S.touched || S.grav>.985)) introDone=true;
+  if(introDone) S.grav=ease(S.grav,S.tGrav,2.2,dt);
+  else if(introT>1.7) S.grav=Math.min(1,S.grav+dt/3.2*(.35+2.2*S.grav*(1-S.grav)+.3)); S.dop=ease(S.dop,S.tDop,3,dt); S.pred=ease(S.pred,S.tPred,5,dt);
+  S.fade=reduce?1:Math.min(1,introT/1.3);
+
+  sceneUniforms();
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  if(window.__t.firstDrawMs===undefined){ const q=performance.now(); gl.finish(); window.__t.firstDrawMs=Math.round(performance.now()-q); }
+  for(let i=0;i<window.__load;i++) gl.drawArrays(gl.TRIANGLES,0,3); // test only: emulates a slower GPU
+  drawBits();
+
+  let U=P.down.u, src=scene;
+  for(let i=0;i<LEVELS;i++){ const d=downs[i]; pass(P.down,d,d.w,d.h);
+    tex(0,src.t,U.uTex); gl.uniform2f(U.uTexel,1/src.w,1/src.h); gl.uniform1f(U.uFirst,i===0?1:0); gl.uniform1f(U.uEnc,enc);
+    // sample at destination uv: destination pixel centre * (1/dest size)
+    gl.uniform2f(U.uTexel,1/src.w,1/src.h); gl.drawArrays(gl.TRIANGLES,0,3); src=d; }
+  U=P.up.u; let low=downs[LEVELS-1];
+  for(let i=LEVELS-2;i>=0;i--){ const d=ups[i]; pass(P.up,d,d.w,d.h);
+    tex(0,low.t,U.uTex); tex(1,downs[i].t,U.uAdd); gl.uniform2f(U.uTexel,1/low.w,1/low.h); gl.uniform2f(U.uOut,d.w,d.h); gl.uniform1f(U.uEnc,enc);
+    gl.drawArrays(gl.TRIANGLES,0,3); low=d; }
+  U=P.fin.u; pass(P.fin,null,canvas.width,canvas.height);
+  tex(0,scene.t,U.uScene); tex(1,ups[0].t,U.uBloom); gl.uniform2f(U.uOut,canvas.width,canvas.height);
+  gl.uniform1f(U.uTime,now/1000); gl.uniform1f(U.uEnc,enc); gl.uniform1f(U.uFade,S.fade*S.fade*veil*veil); tex(2,downs[LEVELS-1].t,U.uLow); gl.uniform1f(U.uAuto,ride?ride.k:0);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+
+  drawGuide(); soundTick();
+  // pick the starting resolution from one timed pass, so slow machines never see a slow first second
+  if(!timed && ++nFrame===24){ timed=true; window.__bench(2); const ms=window.__bench(3).ms; window.__t.passMs=ms;
+    if(ms>8){ scale=clamp(Math.sqrt(6.5/ms),.33,1); build(); skip=2; } }
+
+  // readouts and adaptive resolution, a few times a second
+  acc+=dt; frames++;
+  if(acc>=.5){
+    const fps=frames/acc; acc=0; frames=0;
+    if(!ride) $('hR').textContent=S.dist.toFixed(1); $('hI').textContent=Math.round(S.el*180/Math.PI);
+    $('hC').textContent=Math.sqrt(1-1/S.dist).toFixed(3);
+    $('hQ').textContent=Math.round(scale*100); $('hF').textContent=Math.round(fps);
+    if(skip>0) skip--;
+    else if(fps<48){ if(++slow>=2 && scale>.34){ cap=Math.max(.33,scale*.93); scale=Math.max(.33,scale*.8); build(); slow=0; skip=1; } }
+    else { slow=0; if(fps>58.5 && now>upAfter){ upAfter=now+2500;
+        if(scale<cap-.02){ scale=Math.min(cap,scale*1.1); build(); skip=1; } else cap=Math.min(1,cap+.03); } } // the cap relaxes while the frame rate holds
+  }
+}
+let upAfter=6000;
+
+function drawGuide(){
+  g2.clearRect(0,0,guide.width,guide.height);
+  drawAim();
+  if(S.pred<.01) return;
+  if(ride){ if(S.grav>.99) rideGuide(); return; }
+  const h=guide.height, cx=guide.width/2, cy=h/2;
+  const s=Math.min(1,2.5980762*Math.sqrt(1-1/S.dist)/S.dist), R=S.focal*Math.tan(Math.asin(s))*h;
+  if(!isFinite(R)||R>h*3) return;
+  g2.globalAlpha=S.pred; g2.lineWidth=1.25*dpr; g2.strokeStyle='#8fd3ff'; g2.setLineDash([5*dpr,6*dpr]);
+  g2.beginPath(); g2.arc(cx,cy,R,0,Math.PI*2); g2.stroke(); g2.setLineDash([]);
+  const a=-Math.PI*.28, x=cx+Math.cos(a)*R, y=cy+Math.sin(a)*R, x2=x+34*dpr, y2=y-34*dpr;
+  g2.beginPath(); g2.moveTo(x,y); g2.lineTo(x2,y2); g2.lineTo(x2+12*dpr,y2); g2.stroke();
+  g2.fillStyle='#bfe6ff'; g2.font=(11.5*dpr)+'px ui-monospace,Consolas,Menlo,monospace'; g2.textBaseline='middle';
+  g2.fillText('shadow edge predicted by general relativity',x2+18*dpr,y2-8*dpr);
+  g2.fillStyle='rgba(191,230,255,.65)';
+  g2.fillText('sin α = (√27/2) · √(1 − rₛ/r) · rₛ/r',x2+18*dpr,y2+9*dpr);
+  g2.globalAlpha=1;
+}
+requestAnimationFrame(frame);
+// timing probe for testing: milliseconds of GPU time per scene pass at the current size
+window.__bench=function(n){ n=n||20; const U=P.scene.u, px=new Uint8Array(4); gl.finish();
+  const t=performance.now();
+  for(let i=0;i<n;i++){ sceneUniforms(); gl.drawArrays(gl.TRIANGLES,0,3); drawBits(); }
+  gl.bindFramebuffer(gl.FRAMEBUFFER,downs[LEVELS-1].f); gl.readPixels(0,0,1,1,gl.RGBA,hdr?gl.FLOAT:gl.UNSIGNED_BYTE,hdr?new Float32Array(4):px);
+  gl.finish(); return {ms:(performance.now()-t)/n, W, H, scale}; };
+// test only: the scene buffer with just the solid objects, just the debris, or neither
+window.__snap=function(solids,debris){ const b0=bodies.splice(0), f0=bits.splice(0);
+  if(solids) bodies.push(...b0); if(debris) bits.push(...f0);
+  sceneUniforms(); gl.drawArrays(gl.TRIANGLES,0,3); drawBits();
+  const buf=hdr?new Float32Array(W*H*4):new Uint8Array(W*H*4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,scene.f); gl.readPixels(0,0,W,H,gl.RGBA,hdr?gl.FLOAT:gl.UNSIGNED_BYTE,buf);
+  bodies.length=0; bits.length=0; bodies.push(...b0); bits.push(...f0);
+  return {buf,W,H,err:gl.getError()}; };
+// test only: the frequency shift the camera measures at the centre of the screen
+window.__shift=function(){ const buf=new Float32Array(4);
+  sceneUniforms(); gl.uniform1f(P.scene.u.uProbe,2); gl.drawArrays(gl.TRIANGLES,0,3); gl.uniform1f(P.scene.u.uProbe,0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,scene.f); gl.readPixels(W>>1,H>>1,1,1,gl.RGBA,gl.FLOAT,buf); return buf[0]; };
+// measurement probe for testing: where the rendered shadow ends, scanning right from the centre, against the exact value
+window.__edge=function(){ const n=W>>1, buf=hdr?new Float32Array(n*4):new Uint8Array(n*4), thr=hdr?.5:100;
+  sceneUniforms(); gl.uniform1f(P.scene.u.uProbe,1); gl.drawArrays(gl.TRIANGLES,0,3); gl.uniform1f(P.scene.u.uProbe,0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,scene.f); gl.readPixels(W>>1,H>>1,n,1,gl.RGBA,hdr?gl.FLOAT:gl.UNSIGNED_BYTE,buf);
+  let i=0; for(;i<n;i++) if(buf[i*4]+buf[i*4+1]+buf[i*4+2]>thr) break;
+  const sn=2.5980762*Math.sqrt(1-1/S.dist)/S.dist, pred=S.focal*Math.tan(Math.asin(Math.min(1,sn)))*H;
+  return {dist:+S.dist.toFixed(3), H, focal:camera().focal, measuredPx:i, predictedPx:+pred.toFixed(2), ratio:+(i/pred).toFixed(4)}; };
+}
+// the shaders take a second or two to compile on a cold start, so let the title paint first
+setTimeout(main,60);
+</script>
+</body>
+</html>
