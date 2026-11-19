@@ -21,9 +21,14 @@ swap("  vec3 n=normalize(vec3(.35,.82,-.45)), gc=normalize(cross(n,vec3(.2,.1,1.
 
 # real telescope images at their real places, drawn many times too large (see nebulae.js)
 swap("  return c*g*g*g*g; // brightness goes as the fourth power of the frequency shift",
-"""  for(int i=0;i<12;i++){ vec4 C=uNebC[i]; float z=dot(d,C.xyz); if(z<C.w) continue; // real telescope images, at their real places
-    vec2 q=vec2(dot(d,uNebR[i].xyz)*uNebR[i].w,dot(d,uNebU[i].xyz)*uNebU[i].w)/z;
-    if(max(abs(q.x),abs(q.y))>=1.) continue;
-    vec3 t=textureLod(uNeb,vec3(q*uNebG[i].z*.5+.5,float(i)),uNebLod+uNebG[i].y).rgb;
-    c+=t*t*uNebG[i].x*smoothstep(1.,.55,length(q))*bb(6500.*g)*uNebOn; } // fades to nothing before the picture's edge
+"""  vec3 hz=vec3(0);
+  for(int i=0;i<12;i++){ vec4 C=uNebC[i]; float z=dot(d,C.xyz); if(z<C.w) continue; // real telescope images, at their real places
+    vec2 q=vec2(dot(d,uNebR[i].xyz)*uNebR[i].w,dot(d,uNebU[i].xyz)*uNebU[i].w)/z; float a=0.;
+    if(max(abs(q.x),abs(q.y))<uNebT[i].w){ vec3 e;
+      if(uNebMode>.5){ e=textureLod(uNebP,vec3(min(q*uNebG[i].z+uNebG[i].w,vec2(2.*uNebG[i].w-.0012)),float(i)),0.).rgb; a=clamp((e.r+e.g+e.b)*10.,0.,1.); } // the nebula as points, drawn this frame (nebDraw)
+      else { vec4 t=textureLod(uNeb,vec3(q*.5+.5,float(i)),uNebLod+uNebG[i].y); e=t.rgb*t.rgb*uNebG[i].x*t.a; a=t.a; } // no float targets: the flat picture
+      c+=e*bb(6500.*g)*uNebOn; }
+    vec2 qh=q+uNebS[i].xy; hz+=uNebT[i].rgb*exp(-dot(qh,qh)*.6)*(1.-a); }
+  if(hz.r+hz.g+hz.b>2e-4){ float hn=fbm3(d*11.+5.); // invented haze around each picture, in the colour of its outer band, so the gas does not stop at the frame
+    c+=hz*(.25+11.*hn*hn*hn)*smoothstep(.8,.35,dust)*bb(6500.*g)*uNebOn; }
   return c*g*g*g*g; // brightness goes as the fourth power of the frequency shift""")

@@ -149,3 +149,12 @@ head, _n = _re2.subn(r'<div id="hint" class="ui">.*?</div>', '<div id="hint" cla
 head, _n = _re2.subn(r'<div id="credit" class="ui">.*?</div>', '<div id="credit" class="ui">Images: NASA, ESA, Hubble. Credits in How it works.</div>', head); assert _n == 1
 head, _n = _re2.subn(r'<meta name="description" content="[^"]*">', '<meta name="description" content="A spinning black hole traced live, among real stars and Hubble nebulae.">', head); assert _n == 1
 head, _n = _re2.subn(r'<meta property="og:description" content="[^"]*">', '<meta property="og:description" content="A spinning black hole traced live, among real stars and Hubble nebulae.">', head); assert _n == 1
+
+# ---- nebula edges: proposed line, not yet approved by Walker ----
+rep('<p><b>Nebulae.</b> Drawn 28 to 604 times too large.</p>', '<p><b>Nebulae.</b> Drawn 28 to 604 times too large. Edges fade into invented haze.</p>')
+
+# ---- nebulae as points with depth: proposed line, not yet approved by Walker ----
+rep('<p><b>Nebulae.</b> Drawn 28 to 604 times too large. Edges fade into invented haze.</p>', '<p><b>Nebulae.</b> Drawn 28 to 604 times too large, as clouds of points. Their depth and the haze around them are invented.</p>')
+
+# ---- depth layers: proposed line, not yet approved by Walker ----
+rep('<p><b>Nebulae.</b> Drawn 28 to 604 times too large, as clouds of points. Their depth and the haze around them are invented.</p>', '<p><b>Nebulae.</b> Drawn 28 to 604 times too large, as clouds of points. Their depth, the haze around them and the small stars among them are invented.</p>')

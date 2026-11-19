@@ -23,7 +23,7 @@ uniform mat4 uTet; // the camera's frame: its four-velocity, then right, up and 
 uniform float uFocal,uTime,uDop,uEsc,uEnc,uProbe,uM,uA,uRh,uRcap,uRin,uRing,uVol; uniform vec3 uStep; uniform float uLing;
 uniform float uFlux[32];
 uniform highp sampler3D uNoise,uVolA,uVolB; uniform sampler2D uStars;
-uniform highp sampler2DArray uNeb; uniform vec4 uNebC[12],uNebR[12],uNebU[12],uNebG[12]; uniform float uNebLod,uNebOn; // telescope images: centre, right, up, gain
+uniform highp sampler2DArray uNeb,uNebP; uniform vec4 uNebC[12],uNebR[12],uNebU[12],uNebG[12],uNebT[12],uNebS[12]; uniform float uNebLod,uNebOn,uNebMode; // telescope images: centre, right, up, gain
 uniform vec4 uB[6],uBA[6],uBG[6],uBV[6]; uniform int uNB; // launched objects: centre+radius, half-axis+kind, seed+reach, velocity+time rate
 out vec4 o;
 const float ROUT=${ROUT.toFixed(1)}, TAU=6.2831853;
@@ -208,23 +208,117 @@ const starTex=gl.createTexture();
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); }
 // Telescope images of nebulae, one layer each, loaded after the first frames so the page starts at once.
+// A picture has a frame and space does not. nebMatte writes each image's opacity into its alpha channel so it fades out
+// along an uneven edge that follows its own bright gas (wide where the picture is dim, narrow where it is bright),
+// and takes off the image's own background level so its dark parts match the sky.
+function nebMatte(px,S,seed){ const G=64, c=S/G, lum=new Float32Array(G*G), ch=[[],[],[]];
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){ let r=0,g=0,b=0,k=0;
+    for(let v=0;v<c;v+=4) for(let u=0;u<c;u+=4){ const q=(Math.floor(y*c+v)*S+Math.floor(x*c+u))*4; r+=px[q]; g+=px[q+1]; b+=px[q+2]; k++; }
+    ch[0].push(r/k); ch[1].push(g/k); ch[2].push(b/k); lum[y*G+x]=(r+g+b)/k/765; }
+  const floor=ch.map(a=>a.slice().sort((p,q)=>p-q)[Math.floor(G*G*.03)]);
+  let bl=lum, near=lum; for(let pass=0;pass<3;pass++){ const o=new Float32Array(G*G); // blurred brightness: where the gas is
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){ let a=0,k=0; for(let v=-3;v<=3;v++) for(let u=-3;u<=3;u++){ const X=x+u,Y=y+v; if(X<0||Y<0||X>=G||Y>=G) continue; a+=bl[Y*G+X]; k++; } o[y*G+x]=a/k; } bl=o; if(!pass) near=o; }
+  let mx=1e-6, mn=1e-6; for(const v of bl) mx=Math.max(mx,v); for(const v of near) mn=Math.max(mn,v);
+  let t=seed*2654435761>>>0; const rnd=()=>{ t=t+0x6D2B79F5|0; let r=Math.imul(t^t>>>15,1|t); r=r+Math.imul(r^r>>>7,61|r)^r; return ((r^r>>>14)>>>0)/4294967296; };
+  const L=16, lat=Float32Array.from({length:L*L},rnd), sm=f=>f*f*(3-2*f);
+  const vn=(x,y)=>{ const X=Math.floor(x),Y=Math.floor(y),fx=sm(x-X),fy=sm(y-Y),at=(a,b)=>lat[((b%L+L)%L)*L+((a%L+L)%L)]; return (at(X,Y)*(1-fx)+at(X+1,Y)*fx)*(1-fy)+(at(X,Y+1)*(1-fx)+at(X+1,Y+1)*fx)*fy; };
+  const A=new Float32Array(G*G); let kept=0;
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){ const qx=(x+.5)/G*2-1, qy=(y+.5)/G*2-1;
+    const e=Math.max(0,1-Math.hypot(Math.max(Math.abs(qx)-.3,0),Math.max(Math.abs(qy)-.3,0))/.7); // 0 at the frame, 1 in the middle
+    const nz=.6*vn(x/G*3+7,y/G*3+3)+.4*vn(x/G*7+1,y/G*7+9), b=bl[y*G+x]/mx;
+    const w=(.18+.8*nz)*(1.3-.6*b), a=sm(Math.min(1,e/w)); const wisp=Math.min(1,Math.max(0,near[y*G+x]/mn*2.6-.12)); A[y*G+x]=a*(wisp+(1-wisp)*a*a); /* in the fade, bright filaments outlast the dark gaps between them */ kept+=A[y*G+x]; }
+  for(let y=0;y<S;y++){ const gy=Math.min(G-1.001,Math.max(0,(y+.5)/c-.5)), Y=Math.floor(gy), fy=gy-Y;
+    for(let x=0;x<S;x++){ const gx=Math.min(G-1.001,Math.max(0,(x+.5)/c-.5)), X=Math.floor(gx), fx=gx-X, q=(y*S+x)*4;
+      const a=(A[Y*G+X]*(1-fx)+A[Y*G+X+1]*fx)*(1-fy)+(A[Y*G+G+X]*(1-fx)+A[Y*G+G+X+1]*fx)*fy;
+      px[q]=Math.max(0,px[q]-floor[0]); px[q+1]=Math.max(0,px[q+1]-floor[1]); px[q+2]=Math.max(0,px[q+2]-floor[2]); px[q+3]=a*255; } }
+  const tint=[0,0,0,0]; let tk=0; // the colour of the picture's outer band, for the invented haze drawn around it
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){ if(Math.min(x,y,G-1-x,G-1-y)>5) continue; for(let j=0;j<3;j++) tint[j]+=Math.max(0,ch[j][y*G+x]-floor[j])/255; tk++; }
+  for(let j=0;j<3;j++) tint[j]=+Math.pow(tint[j]/tk,2).toFixed(4);
+  let edge=0,k=0; for(let i=0;i<G;i++){ edge+=lum[i]+lum[(G-1)*G+i]+lum[i*G]+lum[i*G+G-1]; k+=4; }
+  return {tint, floor:floor.map(Math.round), edge:+(edge/k).toFixed(3), mean:+(lum.reduce((p,q)=>p+q,0)/G/G).toFixed(3), kept:+(kept/G/G).toFixed(3)}; }
 const NEB_N=NEBULAE.length, NEB_S=Math.min(1536,gl.getParameter(gl.MAX_TEXTURE_SIZE)), nebTex=gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebTex); gl.texStorage3D(gl.TEXTURE_2D_ARRAY,Math.floor(Math.log2(NEB_S))+1,gl.RGBA8,NEB_S,NEB_S,NEB_N);
 gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-const nebC=new Float32Array(48), nebR=new Float32Array(48), nebU=new Float32Array(48), nebG=new Float32Array(48); let nebLoaded=0, nebOn=0;
+const nebC=new Float32Array(48), nebR=new Float32Array(48), nebU=new Float32Array(48), nebG=new Float32Array(48), nebT=new Float32Array(48), nebS=new Float32Array(48); let nebLoaded=0, nebOn=0;
 NEBULAE.forEach((n,i)=>{ // where it is, and which way up, from the coordinates published with the image
   const d2r=Math.PI/180, ra=n.ra*d2r, dec=n.dec*d2r, X=n.north*d2r, R=SKY_ROT, rot=e=>[0,1,2].map(j=>R[j*3]*e[0]+R[j*3+1]*e[1]+R[j*3+2]*e[2]);
   const c=rot([Math.cos(dec)*Math.cos(ra),Math.cos(dec)*Math.sin(ra),Math.sin(dec)]), N=rot([-Math.sin(dec)*Math.cos(ra),-Math.sin(dec)*Math.sin(ra),Math.cos(dec)]), E=rot([-Math.sin(ra),Math.cos(ra),0]);
   const up=[0,1,2].map(j=>N[j]*Math.cos(X)-E[j]*Math.sin(X)), right=[0,1,2].map(j=>-E[j]*Math.cos(X)-N[j]*Math.sin(X)); // east is to the left on the sky
   const tw=Math.tan(n.half*d2r), th=tw*n.fov[1]/n.fov[0];
-  nebC.set([c[0],c[1],c[2],Math.cos(Math.atan(Math.hypot(tw,th)))],i*4); nebR.set([right[0],right[1],right[2],1/tw],i*4); nebU.set([up[0],up[1],up[2],1/th],i*4);
-  nebG.set([1.5,Math.log2(NEB_S/(2*tw)),1,0],i*4); n.dir=c;
-  setTimeout(()=>{ const img=new Image(); img.onload=()=>{ const cv=document.createElement('canvas'); cv.width=cv.height=NEB_S; cv.getContext('2d').drawImage(img,0,0,NEB_S,NEB_S);
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebTex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
-      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY,0,0,0,i,NEB_S,NEB_S,1,gl.RGBA,gl.UNSIGNED_BYTE,cv); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+  nebC.set([c[0],c[1],c[2],Math.cos(Math.min(1.2,2.8*Math.atan(Math.hypot(tw,th))))],i*4); /* w: how far out its haze is drawn */ nebR.set([right[0],right[1],right[2],1/tw],i*4); nebU.set([up[0],up[1],up[2],1/th],i*4);
+  nebG.set([1.5,Math.log2(NEB_S/(2*tw)),.5,.5],i*4); n.dir=c;
+  setTimeout(()=>{ const img=new Image(); img.onload=()=>{ const S=NEB_S, cv=document.createElement('canvas'); cv.width=cv.height=S;
+      const cx=cv.getContext('2d',{willReadFrequently:true}); cx.translate(0,S); cx.scale(1,-1); cx.drawImage(img,0,0,S,S); // drawn upside down: the texture's first row is the bottom
+      const px=cx.getImageData(0,0,S,S).data; n.matte=nebMatte(px,S,i+1); nebT.set(n.matte.tint,i*4);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebTex); gl.texSubImage3D(gl.TEXTURE_2D_ARRAY,0,0,0,i,S,S,1,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array(px.buffer));
       if(++nebLoaded===NEB_N) gl.generateMipmap(gl.TEXTURE_2D_ARRAY); }; img.src=NEBULA_IMG[i]; },900+250*i);
 });
+/* Each nebula as a cloud of points. One point per pixel of the picture (at a size to suit the screen), each given a depth
+   that is invented: brighter gas nearer, a slow random field, a little scatter, and for the three ring-shaped nebulae a
+   hollow shell. The points are drawn from where the camera is into that nebula's own layer, in linear light, and the ray
+   tracer reads the layer where each ray ends, so the cloud is still bent by the hole. Moving the camera slides near and far
+   points past each other. The middle depth does not move, so the nebula stays at its real place on the sky. */
+const NEB_R=1024, NEB_FRAME=1.3, NEB_SHELL={heic1310a:.62,opo0432d:.78,heic0414a:.5}, NEB_DEPTH=[.22];
+let nebFloat=!!gl.getExtension('EXT_color_buffer_float'), nebP=null, nebFbo=null, NP=null;
+const NVS=`#version 300 es
+precision highp float; precision highp sampler2DArray; precision highp sampler3D;
+uniform sampler2DArray uNeb; uniform sampler3D uNoise;
+uniform float uLayer,uMip,uPG,uSize,uShell,uGain,uMote; uniform vec2 uShift;
+out vec3 vC;
+void main(){
+  float id=float(gl_VertexID), ix=mod(id,uPG), iy=floor(id/uPG);
+  ivec3 hc=ivec3(int(ix)&31,int(iy)&31,((int(ix)>>5)*5+(int(iy)>>5)*11)&31); /* three random numbers for this point, from the block of random bytes */
+  float ra=texelFetch(uNoise,hc,0).r, rb=texelFetch(uNoise,ivec3(hc.xy,(hc.z+13)&31),0).r, rc=texelFetch(uNoise,ivec3(hc.yx,(hc.z+7)&31),0).r;
+  if(uMote>.5){ /* invented stars scattered through and beyond the cloud's depth, only where the cloud is */
+    vec2 q=vec2(ra,rb)*2.-1.; float z=(rc-.5)*6., k=texelFetch(uNoise,ivec3(hc.yx,(hc.z+19)&31),0).r;
+    float m=textureLod(uNeb,vec3(q*.5+.5,uLayer),4.).a;
+    gl_Position=vec4((q+uShift*z)/${NEB_FRAME.toFixed(2)},0.,1.); gl_PointSize=uSize;
+    vC=mix(vec3(1.,.82,.6),vec3(.7,.82,1.),ra)*uGain*k*k*k*m*(abs(z)>1.25?1.:0.); return; }
+  vec4 t=texelFetch(uNeb,ivec3(int(ix),int(iy),int(uLayer)),int(uMip));
+  vec2 uv=(vec2(ix,iy)+.5)/uPG, q=uv*2.-1.;
+  float ls=dot(textureLod(uNeb,vec3(uv,uLayer),6.5).rgb,vec3(.3333)), ll=dot(textureLod(uNeb,vec3(uv,uLayer),4.5).rgb,vec3(.3333));
+  float z=(ls-.3)*1.7+(ll-ls)*.9+(textureLod(uNoise,vec3(uv*.12+uLayer*.13,uLayer*.37),0.).r-.5)*.9;
+  if(uShell>0.){ float r=length(q)/uShell; if(r<1.) z=mix(z,(rc<.5?-1.:1.)*sqrt(1.-r*r),.8); }
+  z=clamp(z+(rc-.5)*.07,-1.2,1.2);
+  q+=(vec2(ra,rb)-.5)*2.4/uPG; /* off the grid, so sheared rows of points do not beat against the pixels */
+  gl_Position=vec4((q+uShift*z)/${NEB_FRAME.toFixed(2)},0.,1.); gl_PointSize=uSize;
+  vC=t.rgb*t.rgb*t.a*uGain;
+}`, NFS=`#version 300 es
+precision highp float; in vec3 vC; out vec4 o;
+void main(){ vec2 d=gl_PointCoord-.5; o=vec4(vC*exp(-8.*dot(d,d)),1.); }`;
+if(nebFloat) try{ NP=prog(NFS,NVS);
+  nebP=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebP); gl.texStorage3D(gl.TEXTURE_2D_ARRAY,1,gl.R11F_G11F_B10F,NEB_R,NEB_R,NEB_N);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  nebFbo=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,nebFbo); gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,nebP,0,0);
+  if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE) nebFloat=false; gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+}catch(e){ nebFloat=false; }
+let nebTurn=0, nebPts=0;
+function nebDraw(C){
+  if(!nebFloat){ for(let i=0;i<NEB_N;i++) nebT[i*4+3]=1; return; }
+  if(nebLoaded<NEB_N) return;
+  const U=NP.u, px=C.focal*H, cone=Math.atan(.5*Math.hypot(W,H)/px), cl=Math.hypot(C.x[0],C.x[1],C.x[2]), sc=-NEB_DEPTH[0]/(cl+20);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,nebFbo); gl.useProgram(NP.p); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE); gl.clearColor(0,0,0,0);
+  gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebTex); gl.uniform1i(U.uNeb,7);
+  gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_3D,noiseTex); gl.uniform1i(U.uNoise,3);
+  nebTurn++; nebPts=0;
+  for(let i=0;i<NEB_N;i++){ const n=NEBULAE[i], tw=1/nebR[i*4+3], th=1/nebU[i*4+3];
+    const sx=sc*kdot(C.x,[nebR[i*4],nebR[i*4+1],nebR[i*4+2]]), sy=sc*kdot(C.x,[nebU[i*4],nebU[i*4+1],nebU[i*4+2]])*tw/th; /* sideways shift per unit of depth, in half-widths of the picture */
+    nebS[i*4]=1.6*sx; nebS[i*4+1]=1.6*sy; /* the haze sits 1.6 depths behind */
+    const seen=Math.acos(clamp(kdot(n.dir,C.f),-1,1))<cone+2*NEB_FRAME*Math.atan(tw);
+    let R=NEB_R; while(R>128 && R*.5>=2*NEB_FRAME*tw*px) R>>=1; /* about one layer pixel per screen pixel */
+    if(!seen){ R=Math.min(R,256); if(n.R && (nebTurn+i)%4) continue; } /* off screen (or only seen bent round the hole): smaller, and one frame in four */
+    const m=Math.log2(NEB_R/R), PG=(NEB_S>>1)>>m, sp=R/(NEB_FRAME*PG), size=4;
+    gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,nebP,0,i); gl.viewport(0,0,NEB_R,NEB_R); gl.clear(gl.COLOR_BUFFER_BIT); gl.viewport(0,0,R,R);
+    gl.uniform1f(U.uLayer,i); gl.uniform1f(U.uMip,1+m); gl.uniform1f(U.uPG,PG); gl.uniform1f(U.uSize,size); gl.uniform1f(U.uShell,NEB_SHELL[n.id]||0);
+    gl.uniform1f(U.uGain,1.5*sp*sp/(size*size*.3396)); /* so that overlapping points add up to the picture's own brightness */
+    gl.uniform2f(U.uShift,sx,sy); gl.uniform1f(U.uMote,0);
+    gl.drawArrays(gl.POINTS,0,PG*PG); nebPts+=PG*PG;
+    gl.uniform1f(U.uMote,1); gl.uniform1f(U.uPG,32); gl.uniform1f(U.uSize,Math.max(2,R/200)); gl.uniform1f(U.uGain,.55); gl.drawArrays(gl.POINTS,0,1024);
+    n.R=R; nebG[i*4]=1; nebG[i*4+2]=.5/NEB_FRAME*R/NEB_R; nebG[i*4+3]=.5*R/NEB_R; nebT[i*4+3]=NEB_FRAME; }
+  gl.disable(gl.BLEND);
+}
 const compileMs=Math.round(performance.now()-tc);
 
 //@@OLD_TARGETS@@
@@ -259,7 +353,7 @@ canvas.addEventListener('pointermove',e=>{ if(!dragging) return;
   if(aim){ aim.x=e.clientX; aim.y=e.clientY; return; }
   if(Math.hypot(e.clientX-downX,e.clientY-downY)>5){ moved=true; clearTimeout(holdT); }
   if(ride){ const k=.0022/ride.zoom; ride.yaw-=(e.clientX-lx)*k; ride.pitch=clamp(ride.pitch+(e.clientY-ly)*k,-1.45,1.45); lx=e.clientX; ly=e.clientY; return; } // riding: look around
-  if(S.look){ lookTo=null; const k=.0027/(S.focal*S.lz); S.ly-=(e.clientX-lx)*k; S.lp=clamp(S.lp+(e.clientY-ly)*k,-1.5,1.5); lx=e.clientX; ly=e.clientY; lastInput=performance.now(); return; } // looking around: turn the camera where it stands
+  if(S.look){ lookTo=lookNeb=null; const k=.0027/(S.focal*S.lz); S.ly-=(e.clientX-lx)*k; S.lp=clamp(S.lp+(e.clientY-ly)*k,-1.5,1.5); lx=e.clientX; ly=e.clientY; lastInput=performance.now(); return; } // looking around: turn the camera where it stands
   S.tAz-=(e.clientX-lx)*.0052; S.tEl=clamp(S.tEl+(e.clientY-ly)*.0042,-1.45,1.45); lx=e.clientX; ly=e.clientY; lastInput=performance.now(); });
 const end=()=>{ dragging=false; aim=null; clearTimeout(holdT); canvas.classList.remove('drag','aim'); };
 canvas.addEventListener('pointerup',e=>{ const a=aim, click=dragging&&!moved&&performance.now()-downT<500; end();
@@ -276,11 +370,11 @@ $('bD').onclick=()=>toggle($('bD'),on=>S.tDop=on?1:0);
 $('bP').onclick=()=>toggle($('bP'),on=>S.tPred=on?1:0);
 $('bS').onclick=()=>toggle($('bS'),on=>sound(on));
 $('bN').onclick=()=>toggle($('bN'),on=>document.body.classList.toggle('readout',on));
-let nebI=-1, lookTo=null; const CREDIT0=$('credit').textContent;
+let nebI=-1, lookTo=null, lookNeb=null; const CREDIT0=$('credit').textContent;
 function baseView(){ const el=Math.abs(S.el)<.012?(S.el<0?-.012:.012):S.el, ce=Math.cos(el), f=[-ce*Math.cos(S.az),-Math.sin(el),-ce*Math.sin(S.az)], r=unit3([-f[2],0,f[0]]); return {f,r,u:cross3(r,f)}; }
 $('bT').onclick=()=>{ if(ride) return; if(!S.look) $('bL').click(); nebI=(nebI+1)%NEBULAE.length; const n=NEBULAE[nebI], B=baseView();
-  lookTo=[Math.atan2(kdot(n.dir,B.r),kdot(n.dir,B.f)),Math.asin(clamp(kdot(n.dir,B.u),-1,1)),1.25]; note(n.name,6); touch(); };
-$('bL').onclick=()=>toggle($('bL'),on=>{ S.look=on; lookTo=null; if(on) note('Drag to look around  ·  Scroll to zoom the telescope  ·  L to return',7); else note(''); });
+  lookTo=[Math.atan2(kdot(n.dir,B.r),kdot(n.dir,B.f)),Math.asin(clamp(kdot(n.dir,B.u),-1,1)),1.25]; lookNeb=n; note(n.name,6); touch(); };
+$('bL').onclick=()=>toggle($('bL'),on=>{ S.look=on; lookTo=lookNeb=null; if(on) note('Drag to look around  ·  Scroll to zoom the telescope  ·  L to return',7); else note(''); });
 $('spin').oninput=e=>{ setSpin(+e.target.value); $('spinV').textContent=(+e.target.value).toFixed(2); touch(); };
 const controls=$('controls');
 $('bC').onclick=()=>{ const o=!controls.classList.contains('open'); controls.classList.toggle('open',o); $('bC').setAttribute('aria-expanded',o); };
@@ -638,7 +732,7 @@ function fillVolume(){
 const tet=new Float32Array(16), STEP=[.08,.26,.03]; window.__STEP=STEP;
 function sceneUniforms(){
   setHole(); const C=camera(); camX=C.x;
-  const U=P.scene.u; pass(P.scene,scene,W,H);
+  nebDraw(C); const U=P.scene.u; pass(P.scene,scene,W,H);
   for(let i=0;i<4;i++){ tet[i*4]=C.E[i][1]; tet[i*4+1]=C.E[i][2]; tet[i*4+2]=C.E[i][3]; tet[i*4+3]=C.E[i][0]; }
   gl.uniform2f(U.uRes,W,H); gl.uniform3fv(U.uCam,C.x); gl.uniformMatrix4fv(U.uTet,false,tet);
   gl.uniform1f(U.uFocal,C.focal); gl.uniform1f(U.uTime,S.time); gl.uniform1f(U.uDop,S.dop);
@@ -649,8 +743,9 @@ function sceneUniforms(){
   gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_3D,volTex[1]); gl.uniform1i(U.uVolB,5);
   gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D,starTex); gl.uniform1i(U.uStars,6);
   gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebTex); gl.uniform1i(U.uNeb,7);
-  gl.uniform4fv(U['uNebC[0]'],nebC); gl.uniform4fv(U['uNebR[0]'],nebR); gl.uniform4fv(U['uNebU[0]'],nebU); gl.uniform4fv(U['uNebG[0]'],nebG);
-  gl.uniform1f(U.uNebLod,-Math.log2(C.focal*H)); gl.uniform1f(U.uNebOn,nebOn);
+  gl.uniform4fv(U['uNebC[0]'],nebC); gl.uniform4fv(U['uNebR[0]'],nebR); gl.uniform4fv(U['uNebU[0]'],nebU); gl.uniform4fv(U['uNebG[0]'],nebG); gl.uniform4fv(U['uNebT[0]'],nebT); gl.uniform4fv(U['uNebS[0]'],nebS);
+  gl.uniform1f(U.uNebLod,-Math.log2(C.focal*H)); gl.uniform1f(U.uNebOn,nebOn); gl.uniform1f(U.uNebMode,nebFloat?1:0);
+  gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebFloat?nebP:nebTex); gl.uniform1i(U.uNebP,8);
   gl.uniform3f(U.uStep,STEP[0],STEP[1],STEP[2]); gl.uniform1f(U.uLing,C.D>RPH*1.7?3.3:5.6); /* close in, every ray sweeps a wide angle, so only rays that go most of the way round count */ gl.uniform1f(U.uVol,volOn?1:0); gl.uniform1f(U.uEsc,Math.max(34,C.D*1.25)); gl.uniform1f(U.uEnc,enc);
   bodyUniforms(U);
   return C;
@@ -668,9 +763,10 @@ function tick(now){
   if(ride && !window.__freeze) dtc=stepRide(dt); else if(!ride) veil=Math.min(1,veil+dt/.6);
   S.time+=dtc; if(!window.__freeze) stepThings(dtc,dt);
   if(ride) rideReadout();
-  if(!reduce && !dragging && !S.look && now-lastInput>2500) S.tAz+=dt*.022;
+  if(!reduce && !dragging && (!S.look || lookNeb) && now-lastInput>2500) S.tAz+=dt*(S.look?.05:.022);
   if(!S.look){ S.ly=ease(S.ly,0,4,dt); S.lp=ease(S.lp,0,4,dt); S.lz=Math.exp(ease(Math.log(S.lz),0,4,dt)); }
-  else if(lookTo){ const dy=((lookTo[0]-S.ly+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI; // turn the short way round
+  else if(lookTo){ if(lookNeb){ const B=baseView(); lookTo[0]=Math.atan2(kdot(lookNeb.dir,B.r),kdot(lookNeb.dir,B.f)); lookTo[1]=Math.asin(clamp(kdot(lookNeb.dir,B.u),-1,1)); }
+    const dy=((lookTo[0]-S.ly+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI; // turn the short way round
     S.ly+=dy*(1-Math.exp(-2.2*dt)); S.lp=ease(S.lp,lookTo[1],2.2,dt); S.lz=Math.exp(ease(Math.log(S.lz),Math.log(lookTo[2]),2.2,dt)); }
   nebOn=nebLoaded===NEB_N?Math.min(1,nebOn+dt/2.5):0;
   S.az=ease(S.az,S.tAz,7,dt); S.el=ease(S.el,S.tEl,7,dt);
@@ -746,7 +842,7 @@ setSpin(S.spin); $('spin').value=S.spin; $('spinV').textContent=S.spin.toFixed(2
 requestAnimationFrame(frame);
 
 /* ---------- test probes ---------- */
-window.__neb=()=>({loaded:nebLoaded,on:nebOn,size:NEB_S,list:NEBULAE,lookTo,i:nebI}); window.__K=K; window.__k={kr,khor,kcap,kedge,kseen,kframe,khover,kphoton,kstep,kderiv,klower,kut,kip,kgas,komega,kisco,kH,delay,velocity,setVelocity,edgeLoop,onScreen,castRay};
+window.__nebDepth=NEB_DEPTH; window.__neb=()=>({float:nebFloat,pts:nebPts,R:NEBULAE.map(n=>n.R),loaded:nebLoaded,on:nebOn,size:NEB_S,list:NEBULAE,lookTo,i:nebI}); window.__K=K; window.__k={kr,khor,kcap,kedge,kseen,kframe,khover,kphoton,kstep,kderiv,klower,kut,kip,kgas,komega,kisco,kH,delay,velocity,setVelocity,edgeLoop,onScreen,castRay};
 window.__bodies=bodies; window.__bits=bits; window.__launch=launch; window.__phys={spawn,toss,addBit,shred,TIDE};
 window.__aim={pick,predict,aimVelocity,start:(x,y)=>{ downX=x; downY=y; startAim(); },set:(x,y)=>{ aim.x=x; aim.y=y; },fire:()=>{ const a=aim; end(); fire(a); },cam:camera,get:()=>aim};
 window.__frame=()=>{ const C=camera(), E=C.E; let w=Math.abs(kip(C.x,E[0],E[0])+1); for(let i=1;i<4;i++){ w=Math.max(w,Math.abs(kip(C.x,E[i],E[i])-1)); for(let j=0;j<i;j++) w=Math.max(w,Math.abs(kip(C.x,E[i],E[j]))); } return w; };
