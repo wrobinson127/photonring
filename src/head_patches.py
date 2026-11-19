@@ -87,3 +87,65 @@ rep("Press L to turn the camera and look around, and scroll to zoom like a teles
 # ---- link preview ----
 rep('<meta name="description" content="A black hole traced live in your browser. Every pixel follows a light path through curved spacetime. One file, no libraries, no images.">',
     '<meta name="description" content="A spinning black hole traced live in your browser, among real stars and Hubble nebulae. Every pixel follows a light path through curved spacetime.">\n<meta property="og:title" content="Photon Ring">\n<meta property="og:description" content="A spinning black hole traced live in your browser, among real stars and Hubble nebulae.">\n<meta property="og:image" content="https://photonring.walker-robinson.com/og.png">\n<meta property="og:url" content="https://photonring.walker-robinson.com/">\n<meta property="og:type" content="website">\n<meta name="twitter:card" content="summary_large_image">')
+
+# ---- final copy, approved by Walker 2026-11-19: replaces the whole How it works panel and the short strings ----
+import re as _re2
+_a = head.index("  <h2>How it works</h2>"); _b = head.index("</aside>", _a)
+head = head[:_a] + """  <h2>How it works</h2>
+
+  <h3>1. Light</h3>
+  <p>One ray per pixel, traced backward through the space around a spinning black hole.</p>
+  <div class="eq">g = &eta; + f l l<br>f = r<sub>s</sub> r&sup3; / (r&#8308; + a&sup2;y&sup2;)<br>H = &frac12; g<sup>&mu;&nu;</sup> p<sub>&mu;</sub> p<sub>&nu;</sub></div>
+  <p>Up to <span id="pSteps">320</span> Runge-Kutta steps per ray. These coordinates stay finite at the horizon.</p>
+
+  <h3>2. Disk</h3>
+  <p>Gas orbits from 1.16 r<sub>s</sub> outward at spin 0.9 (3 r<sub>s</sub> at spin 0). Color is a black body at the shifted temperature. Brightness scales as g&#8308;.</p>
+  <div class="eq">g = (p &middot; u)<sub>camera</sub> / (p &middot; u)<sub>gas</sub></div>
+  <p>Temperature profile: Page and Thorne (1974).</p>
+
+  <h3>3. The picture</h3>
+  <p>The arc over the shadow is the far side of the disk. The thin rings are light that circled the hole. The flat edge is the side spinning toward you.</p>
+
+  <h3>4. Checks</h3>
+  <table>
+    <tr><th>Closest light can pass and escape (r<sub>s</sub>)</th><th>This page</th><th>Exact</th></tr>
+    <tr><td>With the spin</td><td id="cB">&hellip;</td><td id="cBx">&hellip;</td></tr>
+    <tr><td>Against the spin</td><td id="cD">&hellip;</td><td id="cDx">&hellip;</td></tr>
+  </table>
+  <p>P overlays the exact shadow edge (Bardeen, 1973).</p>
+
+  <h3>5. Objects</h3>
+  <p>They free-fall by the same equations. You see each where it was when its light left, so one falling in fades just outside the horizon.</p>
+
+  <h3>6. Drag and tides</h3>
+  <p>The disk drags objects inward. A planet or star breaks up at about</p>
+  <div class="eq">(3 M<sub>hole</sub> / 4&pi;&rho;)<sup>1/3</sup></div>
+  <p>For a hole of 4.3 million Suns: 5.7 r<sub>s</sub> at Earth's density, 8.9 r<sub>s</sub> at the Sun's.</p>
+
+  <h3>7. The ride</h3>
+  <p>R follows the last object launched, through the horizon. Light ahead shifts blue, light behind red.</p>
+  <p>At spin 0, a camera falling from rest should see the shadow's edge 42.1&deg; from its middle at the horizon. The render agrees within about 0.5%.</p>
+
+  <h3>8. Nebulae</h3>
+  <p>Twelve Hubble images at their real positions and orientations.</p>
+
+  <h3>Not physics</h3>
+  <p><b>Sky.</b> Stars to magnitude 6.5 are real, as seen from Earth. Fainter stars, clouds and galaxies are invented.</p>
+  <p><b>Nebulae.</b> Drawn 28 to 604 times too large.</p>
+  <p><b>Disk.</b> No thickness. Streaks are noise.</p>
+  <p><b>Objects.</b> Far too large. Drag far too strong.</p>
+  <p><b>Debris.</b> Fades by a hand-set rule.</p>
+  <p><b>Light delay.</b> First-order for objects.</p>
+  <p><b>Ride.</b> Playback slows as you fall. Exposure adapts.</p>
+  <p>Brightness and exposure are set by eye throughout.</p>
+
+  <h3>Credit</h3>
+  <p>Made by Walker Robinson with Claude. Nebula images: ESA/Hubble, CC BY 4.0.</p>
+  <div id="nebCredits"></div>
+  <p>Stars: Yale Bright Star Catalogue (Hoffleit and Warren, 1991).</p>
+""" + head[_b:]
+head = head.replace('  #panel .eq{', '  #panel p b{font-weight:400;color:var(--ink)}\n  #panel .eq{', 1)
+head, _n = _re2.subn(r'<div id="hint" class="ui">.*?</div>', '<div id="hint" class="ui">Drag &nbsp;&middot;&nbsp; Scroll &nbsp;&middot;&nbsp; Click to launch &nbsp;&middot;&nbsp; Hold and drag to aim &nbsp;&middot;&nbsp; R ride &nbsp;&middot;&nbsp; N nebulae</div>', head); assert _n == 1
+head, _n = _re2.subn(r'<div id="credit" class="ui">.*?</div>', '<div id="credit" class="ui">Images: NASA, ESA, Hubble. Credits in How it works.</div>', head); assert _n == 1
+head, _n = _re2.subn(r'<meta name="description" content="[^"]*">', '<meta name="description" content="A spinning black hole traced live, among real stars and Hubble nebulae.">', head); assert _n == 1
+head, _n = _re2.subn(r'<meta property="og:description" content="[^"]*">', '<meta property="og:description" content="A spinning black hole traced live, among real stars and Hubble nebulae.">', head); assert _n == 1

@@ -533,7 +533,7 @@ function stepRide(dt){ // returns the far-away time to move the rest of the scen
   r=advance(b,dtau,8,DRAG[0]); ride.tau+=dtau;
   const dtc=b.t-t0; ride.far=r>rh?b.t-(farOffset(r)-farOffset(ride.r0)):Infinity;
   if(ride.leave) veil-=dt/.3; else veil=Math.min(veil+dt/.6,clamp((r-stop)/.2,0,1));
-  if(r<=stop+1e-3) stopRide('The ride stops here, inside the hole. Seen from far away you never reached the horizon. You reddened and faded just outside it.');
+  if(r<=stop+1e-3) stopRide('Seen from far away, you never reached the horizon.');
   else if(veil<=0 || r>70) stopRide();
   return Math.min(dtc,dtau*3);
 }
@@ -741,7 +741,7 @@ function drawGuide(){
     g2.fillText('shadow edge predicted by general relativity',(lab[0]+14)*dpr,(lab[1]-12)*dpr); }
   g2.globalAlpha=1;
 }
-$('nebCredits').innerHTML=NEBULAE.map(n=>'<p><span>'+n.name+'</span>. '+n.credit.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'. Drawn about '+n.enlarged+' times its real size.</p>').join('');
+$('nebCredits').innerHTML=NEBULAE.map(n=>'<p><span>'+n.name+'</span>, \u00d7'+n.enlarged+'. '+n.credit.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</p>').join('');
 setSpin(S.spin); $('spin').value=S.spin; $('spinV').textContent=S.spin.toFixed(2);
 requestAnimationFrame(frame);
 
