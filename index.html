@@ -345,7 +345,7 @@ uniform mat4 uTet; // the camera's frame: its four-velocity, then right, up and 
 uniform float uFocal,uTime,uDop,uEsc,uEnc,uProbe,uM,uA,uRh,uRcap,uRin,uRing,uVol; uniform vec3 uStep; uniform float uLing;
 uniform float uFlux[32];
 uniform highp sampler3D uNoise,uVolA,uVolB; uniform sampler2D uStars;
-uniform highp sampler2DArray uNeb,uNebP; uniform vec4 uNebC[12],uNebR[12],uNebU[12],uNebG[12],uNebT[12],uNebS[12]; uniform float uNebLod,uNebOn,uNebMode; // telescope images: centre, right, up, gain
+uniform highp sampler2DArray uNeb,uNebP,uStarG,uStarB; uniform vec4 uNebC[12],uNebR[12],uNebU[12],uNebG[12],uNebT[12],uNebS[12]; uniform float uNebLod,uNebOn,uNebMode; // telescope images: centre, right, up, gain
 uniform vec4 uB[6],uBA[6],uBG[6],uBV[6]; uniform int uNB; // launched objects: centre+radius, half-axis+kind, seed+reach, velocity+time rate
 out vec4 o;
 const float ROUT=${ROUT.toFixed(1)}, TAU=6.2831853;
@@ -439,7 +439,7 @@ vec3 nebulae(vec3 d){
   float f=fbm3(q), r=ridge(q*1.6+2.);
   float dens=smoothstep(.38,.75,f)*w;
   vec3 col=mix(ca,cb,smoothstep(.5,.8,r)*smoothstep(.45,.7,f))*dens*(.25+1.5*r*r*r);
-  return col*smoothstep(.75,.4,.65*vnoise(q*2.4+11.)+.35*vnoise(q*5.3+3.));
+  float fine=.6*ridge(q*4.7+7.)+.4*ridge(q*10.9+1.), lanes=smoothstep(.34,.56,fbm3(q*3.3+9.)); /* fine filaments, and lanes of dust across them */ return col*(.4+1.5*fine*fine)*(.25+.75*lanes)*smoothstep(.75,.4,.65*vnoise(q*2.4+11.)+.35*vnoise(q*5.3+3.));
 }
 // far spiral galaxies seen at a tilt: warm core, bluer arms
 const vec3 GALC[5]=vec3[5](vec3(-0.8329,0.0262,-0.5528),vec3(0.3506,0.5009,0.7913),vec3(0.3008,-0.2005,-0.9324),vec3(-0.4014,-0.7527,-0.5219),vec3(0.5997,-0.7497,0.2799));
@@ -468,13 +468,23 @@ vec3 sky(vec3 d,float g){
     float on=step(.90,h);
     float mag=pow(hash31(id+9.1),6.)*9.+.25;
     float rad= l==0?.085: l==1?.12:.17;
-    float core=smoothstep(rad,0.,dist);
+    float re=clamp(1.5*exp2(uNebLod)*S,.012,rad), core=smoothstep(re,0.,dist);
     vec3 tint=bb((3500.+9000.*hash31(id+3.3))*g);
-    c+=on*mag*core*core*tint*(l==0?1.6: l==1?.8:.4);
+    c+=on*mag*core*core*tint*(l==0?1.6: l==1?.8:.4)*min(6.,pow(rad/re,1.2));
   }
   { // the real stars brighter than magnitude 6.5, from the map of the whole sky
-    vec3 s=textureLod(uStars,vec2(atan(d.z,d.x)/TAU+.5,asin(clamp(d.y,-1.,1.))/3.14159265+.5),0.).rgb;
-    c+=s*s*40.*bb(6500.*g); }
+    }
+  { // every catalogue star as a sharp point about a pixel wide, from the list for this part of the sky (starGrid)
+    vec3 ad=abs(d); vec2 p=d.xz/(ad.x+ad.y+ad.z); if(d.y<0.) p=(1.-abs(p.yx))*vec2(p.x>=0.?1.:-1.,p.y>=0.?1.:-1.);
+    ivec2 cell=ivec2(clamp((p*.5+.5)*512.,0.,511.)); float sg=clamp(.8*exp2(uNebLod),5e-5,1.2e-3), amp=clamp(pow(1.1e-3/sg,1.3),.3,8.);
+    for(int k=0;k<6;k++){ vec4 st=texelFetch(uStarG,ivec3(cell,k),0); if(st.w==0.) break;
+      vec3 e=d-vec3(st.x,sign(st.w)*sqrt(max(0.,1.-st.x*st.x-st.y*st.y)),st.y); c+=bb(st.z*g)*abs(st.w)*amp*exp(-dot(e,e)/(2.*sg*sg)); }
+    cell=ivec2(clamp((p*.5+.5)*64.,0.,63.)); // the brightest stars: a soft glow and the four spikes a telescope's mirror supports give them
+    for(int k=0;k<4;k++){ vec4 st=texelFetch(uStarB,ivec3(cell,k),0); if(st.w==0.) break;
+      vec3 sd=vec3(st.x,sign(st.w)*sqrt(max(0.,1.-st.x*st.x-st.y*st.y)),st.y), e=d-sd, ax=normalize(cross(sd,vec3(.31,.9,.3))), ay=cross(sd,ax);
+      float x=abs(dot(e,ax)), y=abs(dot(e,ay)), r=length(e), I=abs(st.w), L=.0035*(1.+.9*log2(1.+I)), w=.8*sg;
+      float spike=exp(-x/L)*exp(-y*y/(2.*w*w))+exp(-y/L)*exp(-x*x/(2.*w*w));
+      c+=bb(st.z*g)*I*(.022*spike+.012*exp(-r/(.0016+.0006*log2(1.+I))))*smoothstep(.03,.02,r); } }
   // the galaxy seen from inside: a band of unresolved stars with a bright bulge and a lane of dust
   vec3 n=vec3(-0.68457, 0.44422, 0.57795), gc=vec3(0.41096, -0.41965, 0.80932); // the real plane and centre of the Milky Way
   float lat=dot(d,n), bulge=exp(-(1.-dot(d,gc))*5.);
@@ -674,28 +684,37 @@ const volTex=[volA,volB].map(buf=>{ const t=gl.createTexture(); gl.bindTexture(g
   gl.texImage3D(gl.TEXTURE_3D,0,gl.RGBA8,VX,VY,VZ,0,gl.RGBA,gl.UNSIGNED_BYTE,buf);
   for(const w of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T,gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D,w,gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MAG_FILTER,gl.LINEAR); return t; });
-// The real sky: every catalogue star brighter than magnitude 6.5, drawn once into a 4096 x 2048 map of the whole
-// sky (longitude by latitude in the scene's axes), which the ray tracer looks up where each ray ends.
-const starTex=gl.createTexture();
-{ const SW=4096, SH=2048, px=new Uint8Array(SW*SH*4), raw=atob(STARS), R=SKY_ROT, n=raw.length/6, clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+// The real sky: every catalogue star brighter than magnitude 6.5, unpacked into lists the ray tracer reads where each ray ends.
+const starList=[];
+/* Stars as points, not pixels. The sky is cut into 512 x 512 cells (an octahedron unfolded into a square, so no cell is
+   squeezed at a pole), and each cell lists up to six stars whose light can reach it: direction, temperature, brightness.
+   The ray tracer draws each listed star as a round point about a screen pixel wide, so stars stay sharp at any zoom. */
+const SG=512, SGK=6, SB=64, starG=gl.createTexture(), starB=gl.createTexture(); let starOver=0;
+function octCell(d,SG){ const L=Math.abs(d[0])+Math.abs(d[1])+Math.abs(d[2]); let px=d[0]/L, pz=d[2]/L;
+  if(d[1]<0){ const a=(1-Math.abs(pz))*(px>=0?1:-1), b=(1-Math.abs(px))*(pz>=0?1:-1); px=a; pz=b; }
+  return Math.min(SG-1,Math.max(0,Math.floor((px*.5+.5)*SG)))+SG*Math.min(SG-1,Math.max(0,Math.floor((pz*.5+.5)*SG))); }
+function starGrid(tex,list,SG,SGK,radii){ const data=new Float32Array(SG*SG*SGK*4), fill=new Uint8Array(SG*SG);
+  const u3=v=>{ const l=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; }, x3=(p,q)=>[p[1]*q[2]-p[2]*q[1],p[2]*q[0]-p[0]*q[2],p[0]*q[1]-p[1]*q[0]];
+  for(const st of list){ const d=[st[0],st[1],st[2]], a=u3(Math.abs(d[1])<.9?[-d[2],0,d[0]]:[0,-d[2],d[1]]), b=x3(d,a), cells=new Set([octCell(d,SG)]);
+    for(const rho of radii) for(let j=0;j<16;j++){ const th=j*Math.PI/8, cx=Math.cos(th)*rho, sx=Math.sin(th)*rho; cells.add(octCell(u3([d[0]+a[0]*cx+b[0]*sx,d[1]+a[1]*cx+b[1]*sx,d[2]+a[2]*cx+b[2]*sx]),SG)); }
+    for(const c of cells){ if(fill[c]>=SGK){ starOver++; continue; } const o=(fill[c]*SG*SG+c)*4; fill[c]++;
+      data[o]=d[0]; data[o+1]=d[2]; data[o+2]=st[3]; data[o+3]=st[4]*(d[1]<0?-1:1); } }
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY,tex); gl.texStorage3D(gl.TEXTURE_2D_ARRAY,1,gl.RGBA32F,SG,SG,SGK);
+  gl.texSubImage3D(gl.TEXTURE_2D_ARRAY,0,0,0,0,SG,SG,SGK,gl.RGBA,gl.FLOAT,data);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MIN_FILTER,gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); }
+{ const raw=atob(STARS), R=SKY_ROT, n=raw.length/6, clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
   const bbJS=T=>{ const t=clamp(T,1000,40000)/100; // the shader's black-body colour
     const r=t<=66?1:1.292936*Math.pow(t-60,-.1332047), g=t<=66?.3900816*Math.log(t)-.6318414:1.1298909*Math.pow(t-60,-.0755148), b=t>=66?1:(t<=19?0:.5432068*Math.log(t-10)-1.1962541);
     return [r,g,b].map(c=>Math.pow(clamp(c,0,1),2.2)); };
   for(let i=0;i<n;i++){ const o=i*6, c=k=>raw.charCodeAt(o+k);
     const ra=(c(0)*256+c(1))/65535*2*Math.PI, dec=(c(2)*256+c(3))/65535*Math.PI-Math.PI/2, mag=c(4)/25-2, bv=c(5)/100-.5;
     const e=[Math.cos(dec)*Math.cos(ra),Math.cos(dec)*Math.sin(ra),Math.sin(dec)], d=[0,1,2].map(j=>R[j*3]*e[0]+R[j*3+1]*e[1]+R[j*3+2]*e[2]);
-    const T=4600*(1/(.92*bv+1.7)+1/(.92*bv+.62)), col=bbJS(T), I=9*Math.pow(10,-.4*mag)/40; // temperature from colour (Ballesteros 2012); brightness from magnitude
-    const fx=(Math.atan2(d[2],d[0])/(2*Math.PI)+.5)*SW, fy=(Math.asin(clamp(d[1],-1,1))/Math.PI+.5)*SH, wide=Math.min(8,1/Math.max(.05,Math.sqrt(1-d[1]*d[1]))), kx=Math.ceil(2*wide);
-    for(let dy=-2;dy<=2;dy++) for(let dx=-kx;dx<=kx;dx++){ const X=Math.floor(fx)+dx, Y=Math.floor(fy)+dy; if(Y<0||Y>=SH) continue;
-      const ux=(X+.5-fx)/wide, uy=Y+.5-fy, w=Math.exp(-(ux*ux+uy*uy)/1.1), q=(((X%SW)+SW)%SW+Y*SW)*4;
-      for(let k=0;k<3;k++){ const v=Math.sqrt(Math.min(1,col[k]*I*w))*255; if(v>px[q+k]) px[q+k]=v; } }
-    if(mag<2.3){ const L=Math.round(9+9*(2.3-mag)); // the brightest stars get the four spikes a telescope's mirror supports give them
-      for(let t=-L;t<=L;t++){ if(!t) continue; const w=Math.pow(1-Math.abs(t)/(L+1),2.2)*.3;
-        for(const [X,Y] of [[Math.floor(fx+t*wide),Math.floor(fy)],[Math.floor(fx),Math.floor(fy)+t]]){ if(Y<0||Y>=SH) continue; const q=(((X%SW)+SW)%SW+Y*SW)*4;
-          for(let k=0;k<3;k++){ const v=Math.sqrt(Math.min(1,col[k]*I*w))*255; if(v>px[q+k]) px[q+k]=v; } } } } }
-  gl.bindTexture(gl.TEXTURE_2D,starTex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,SW,SH,0,gl.RGBA,gl.UNSIGNED_BYTE,px);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); }
+    const T=4600*(1/(.92*bv+1.7)+1/(.92*bv+.62)), col=bbJS(T), I=9*Math.pow(10,-.4*mag)/40; starList.push([d[0],d[1],d[2],T,I*40,mag]); // temperature from colour (Ballesteros 2012); brightness from magnitude
+  }
+  starList.sort((a,b)=>b[4]-a[4]); starGrid(starG,starList,SG,SGK,[.0014,.0028,.0042]);
+  starGrid(starB,starList.filter(st=>st[5]<2.6),SB,4,[.006,.012,.018,.024,.03]); /* glow and spikes reach 1.7 degrees */
+}
 // Telescope images of nebulae, one layer each, loaded after the first frames so the page starts at once.
 // A picture has a frame and space does not. nebMatte writes each image's opacity into its alpha channel so it fades out
 // along an uneven edge that follows its own bright gas (wide where the picture is dim, narrow where it is bright),
@@ -887,10 +906,10 @@ $('bD').onclick=()=>toggle($('bD'),on=>S.tDop=on?1:0);
 $('bP').onclick=()=>toggle($('bP'),on=>S.tPred=on?1:0);
 $('bS').onclick=()=>toggle($('bS'),on=>sound(on));
 $('bN').onclick=()=>toggle($('bN'),on=>document.body.classList.toggle('readout',on));
-let nebI=-1, lookTo=null, lookNeb=null; const CREDIT0=$('credit').textContent;
+let nebI=-1, lookTo=null, lookNeb=null, lookAz0=0, lookPh=0; const CREDIT0=$('credit').textContent;
 function baseView(){ const el=Math.abs(S.el)<.012?(S.el<0?-.012:.012):S.el, ce=Math.cos(el), f=[-ce*Math.cos(S.az),-Math.sin(el),-ce*Math.sin(S.az)], r=unit3([-f[2],0,f[0]]); return {f,r,u:cross3(r,f)}; }
 $('bT').onclick=()=>{ if(ride) return; if(!S.look) $('bL').click(); nebI=(nebI+1)%NEBULAE.length; const n=NEBULAE[nebI], B=baseView();
-  lookTo=[Math.atan2(kdot(n.dir,B.r),kdot(n.dir,B.f)),Math.asin(clamp(kdot(n.dir,B.u),-1,1)),1.25]; lookNeb=n; note(n.name,6); touch(); };
+  lookTo=[Math.atan2(kdot(n.dir,B.r),kdot(n.dir,B.f)),Math.asin(clamp(kdot(n.dir,B.u),-1,1)),1.25]; if(!lookNeb){ lookAz0=S.tAz; lookPh=0; } lookNeb=n; note(n.name,6); touch(); };
 $('bL').onclick=()=>toggle($('bL'),on=>{ S.look=on; lookTo=lookNeb=null; if(on) note('Drag to look around  ·  Scroll to zoom the telescope  ·  L to return',7); else note(''); });
 $('spin').oninput=e=>{ setSpin(+e.target.value); $('spinV').textContent=(+e.target.value).toFixed(2); touch(); };
 const controls=$('controls');
@@ -1287,7 +1306,8 @@ function sceneUniforms(){
   gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_3D,noiseTex); gl.uniform1i(U.uNoise,3);
   gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_3D,volTex[0]); gl.uniform1i(U.uVolA,4);
   gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_3D,volTex[1]); gl.uniform1i(U.uVolB,5);
-  gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D,starTex); gl.uniform1i(U.uStars,6);
+  gl.activeTexture(gl.TEXTURE9); gl.bindTexture(gl.TEXTURE_2D_ARRAY,starG); gl.uniform1i(U.uStarG,9);
+  gl.activeTexture(gl.TEXTURE10); gl.bindTexture(gl.TEXTURE_2D_ARRAY,starB); gl.uniform1i(U.uStarB,10);
   gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D_ARRAY,nebTex); gl.uniform1i(U.uNeb,7);
   gl.uniform4fv(U['uNebC[0]'],nebC); gl.uniform4fv(U['uNebR[0]'],nebR); gl.uniform4fv(U['uNebU[0]'],nebU); gl.uniform4fv(U['uNebG[0]'],nebG); gl.uniform4fv(U['uNebT[0]'],nebT); gl.uniform4fv(U['uNebS[0]'],nebS);
   gl.uniform1f(U.uNebLod,-Math.log2(C.focal*H)); gl.uniform1f(U.uNebOn,nebOn); gl.uniform1f(U.uNebMode,nebFloat?1:0);
@@ -1309,7 +1329,8 @@ function tick(now){
   if(ride && !window.__freeze) dtc=stepRide(dt); else if(!ride) veil=Math.min(1,veil+dt/.6);
   S.time+=dtc; if(!window.__freeze) stepThings(dtc,dt);
   if(ride) rideReadout();
-  if(!reduce && !dragging && (!S.look || lookNeb) && now-lastInput>2500) S.tAz+=dt*(S.look?.05:.022);
+  if(!reduce && !dragging && !S.look && now-lastInput>2500) S.tAz+=dt*.022;
+  if(!reduce && S.look && lookNeb){ lookPh+=dt*.45; S.tAz=lookAz0+.28*Math.sin(lookPh); } /* facing a nebula, the camera sways from side to side so the cloud's depth shows, and never wanders off */
   if(!S.look){ S.ly=ease(S.ly,0,4,dt); S.lp=ease(S.lp,0,4,dt); S.lz=Math.exp(ease(Math.log(S.lz),0,4,dt)); }
   else if(lookTo){ if(lookNeb){ const B=baseView(); lookTo[0]=Math.atan2(kdot(lookNeb.dir,B.r),kdot(lookNeb.dir,B.f)); lookTo[1]=Math.asin(clamp(kdot(lookNeb.dir,B.u),-1,1)); }
     const dy=((lookTo[0]-S.ly+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI; // turn the short way round
@@ -1388,7 +1409,7 @@ setSpin(S.spin); $('spin').value=S.spin; $('spinV').textContent=S.spin.toFixed(2
 requestAnimationFrame(frame);
 
 /* ---------- test probes ---------- */
-window.__nebDepth=NEB_DEPTH; window.__neb=()=>({float:nebFloat,pts:nebPts,R:NEBULAE.map(n=>n.R),loaded:nebLoaded,on:nebOn,size:NEB_S,list:NEBULAE,lookTo,i:nebI}); window.__K=K; window.__k={kr,khor,kcap,kedge,kseen,kframe,khover,kphoton,kstep,kderiv,klower,kut,kip,kgas,komega,kisco,kH,delay,velocity,setVelocity,edgeLoop,onScreen,castRay};
+window.__stars=()=>({over:starOver,n:starList.length,top:starList.slice(0,8)}); window.__nebDepth=NEB_DEPTH; window.__neb=()=>({float:nebFloat,pts:nebPts,R:NEBULAE.map(n=>n.R),loaded:nebLoaded,on:nebOn,size:NEB_S,list:NEBULAE,lookTo,i:nebI}); window.__K=K; window.__k={kr,khor,kcap,kedge,kseen,kframe,khover,kphoton,kstep,kderiv,klower,kut,kip,kgas,komega,kisco,kH,delay,velocity,setVelocity,edgeLoop,onScreen,castRay};
 window.__bodies=bodies; window.__bits=bits; window.__launch=launch; window.__phys={spawn,toss,addBit,shred,TIDE};
 window.__aim={pick,predict,aimVelocity,start:(x,y)=>{ downX=x; downY=y; startAim(); },set:(x,y)=>{ aim.x=x; aim.y=y; },fire:()=>{ const a=aim; end(); fire(a); },cam:camera,get:()=>aim};
 window.__frame=()=>{ const C=camera(), E=C.E; let w=Math.abs(kip(C.x,E[0],E[0])+1); for(let i=1;i<4;i++){ w=Math.max(w,Math.abs(kip(C.x,E[i],E[i])-1)); for(let j=0;j<i;j++) w=Math.max(w,Math.abs(kip(C.x,E[i],E[j]))); } return w; };
